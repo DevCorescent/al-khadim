@@ -1,0 +1,20 @@
+{
+  "name": "alkhadim-platform",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "setup": "npm run setup:api && npm run setup:web",
+    "setup:api": "cd api && npm install && npx prisma generate",
+    "setup:web": "cd web && npm install",
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "cd api && npm run dev",
+    "dev:web": "cd web && npm run dev",
+    "db:setup": "cd api && cp ../.env.example .env && npx prisma db push && npm run db:seed",
+    "db:seed": "cd api && node prisma/seed.js",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

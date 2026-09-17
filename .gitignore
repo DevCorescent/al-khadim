@@ -1,0 +1,16 @@
+node_modules/
+.next/
+dist/
+build/
+*.tsbuildinfo
+
+.env
+.env.*
+!.env.example
+
+.DS_Store
+.claude/
+.windsurf/
+
+api/uploads/
+web/src/generated/prisma/
