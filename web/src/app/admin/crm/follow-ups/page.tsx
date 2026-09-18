@@ -35,7 +35,8 @@ export default function FollowUpsPage() {
 
   const { data: followUps, isLoading } = useQuery({
     queryKey: ['follow-ups', filter],
-    queryFn: () => api.get(`/follow-ups?isCompleted=${filter}`).then(r => r.data),
+    // "All" ('') must omit the param: the API treats any value other than 'true' as false.
+    queryFn: () => api.get('/follow-ups', { params: filter ? { isCompleted: filter } : {} }).then(r => r.data),
   });
   const { data: clients } = useQuery({
     queryKey: ['clients-list'],
@@ -50,10 +51,12 @@ export default function FollowUpsPage() {
   const complete = useMutation({
     mutationFn: (id: string) => api.put(`/follow-ups/${id}`, { isCompleted: true }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['follow-ups'] }); toast.success('Marked complete'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to update follow-up'),
   });
   const del = useMutation({
     mutationFn: (id: string) => api.delete(`/follow-ups/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['follow-ups'] }); toast.success('Deleted'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to delete follow-up'),
   });
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {

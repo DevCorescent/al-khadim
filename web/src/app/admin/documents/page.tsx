@@ -47,6 +47,25 @@ export default function DocumentsPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['documents'] }); toast.success('Deleted'); },
   });
 
+  // The download endpoint needs the Bearer token, so fetch it through the API
+  // client (a plain link sends no Authorization header) and save the blob.
+  const handleDownload = async (row: any) => {
+    try {
+      const res = await api.get(`/documents/${row.id}/download`, { responseType: 'blob' });
+      const disposition: string = res.headers['content-disposition'] || '';
+      const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+      const plain = /filename="([^"]+)"/i.exec(disposition);
+      const filename = encoded ? decodeURIComponent(encoded[1]) : plain?.[1] || row.title || 'document';
+      const url = window.URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Failed to download document');
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     upload.mutate(new FormData(e.currentTarget));
@@ -63,12 +82,13 @@ export default function DocumentsPage() {
         addLabel="Upload Document"
         actions={(row) => (
           <div className="flex gap-1.5">
-            <a
-              href={`${process.env.NEXT_PUBLIC_API_URL}/api/documents/${row.id}/download`}
+            <button
+              onClick={() => handleDownload(row)}
+              title="Download"
               className="p-1.5 hover:bg-blue-50 rounded text-blue-600"
             >
               <Download size={14} />
-            </a>
+            </button>
             <button onClick={() => { if (confirm('Delete?')) del.mutate(row.id); }} className="p-1.5 hover:bg-red-50 rounded text-red-500">
               <Trash2 size={14} />
             </button>

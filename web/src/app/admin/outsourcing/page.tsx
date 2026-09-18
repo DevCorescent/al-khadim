@@ -40,6 +40,7 @@ export default function OutsourcingPage() {
   const del = useMutation({
     mutationFn: (id: string) => api.delete(`/outsourcing/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['outsourcing'] }); toast.success('Deleted'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to delete'),
   });
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {

@@ -1,8 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import axios from 'axios';
-
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001';
+import axios, { type AxiosInstance } from 'axios';
+import { API_BASE as API, createPortalClient } from './portalApi';
 
 export interface ClientUserProfile {
   id: string;
@@ -53,23 +52,18 @@ export const useClientAuth = create<ClientAuthState>()(
       },
 
       logout: async () => {
-        const { accessToken } = get();
+        const { accessToken, refreshToken } = get();
         try {
-          if (accessToken) {
-            await axios.post(`${API}/api/client-auth/logout`, {}, {
-              headers: { Authorization: `Bearer ${accessToken}` },
-            });
-          }
+          // Revoke the refresh token server-side (best effort). Goes through the portal
+          // client so an expired access token is refreshed first.
+          if (accessToken) await portalClient().post('/api/client-auth/logout', { refreshToken }, { timeout: 5000 });
         } catch {}
         set({ clientUser: null, accessToken: null, refreshToken: null, isAuthenticated: false });
       },
 
       refreshProfile: async () => {
-        const { accessToken } = get();
-        if (!accessToken) return;
-        const { data } = await axios.get(`${API}/api/client-auth/me`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
+        if (!get().accessToken) return;
+        const { data } = await portalClient().get('/api/client-auth/me');
         set(s => ({ clientUser: { ...s.clientUser, ...data } }));
       },
     }),
@@ -86,10 +80,27 @@ export const useClientAuth = create<ClientAuthState>()(
   )
 );
 
-/* Axios instance pre-configured with client (company portal) auth */
-export function clientApi(accessToken: string) {
-  return axios.create({
-    baseURL: API,
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+/* Shared axios instance for the client (company portal) session: attaches the current access
+   token and refreshes it on 401 (redirecting to /company/login if that fails). */
+let _client: AxiosInstance | null = null;
+function portalClient(): AxiosInstance {
+  if (!_client) {
+    _client = createPortalClient({
+      refreshPath: '/api/client-auth/refresh',
+      loginPath: '/company/login',
+      getTokens: () => useClientAuth.getState(),
+      setTokens: (accessToken, refreshToken) => useClientAuth.setState({ accessToken, refreshToken }),
+      clearSession: () => useClientAuth.setState({ clientUser: null, accessToken: null, refreshToken: null, isAuthenticated: false }),
+    });
+  }
+  return _client;
+}
+
+/**
+ * Axios instance with client (company portal) auth. The argument is kept for existing call sites;
+ * the instance always uses the latest token from the store.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function clientApi(_accessToken?: string | null): AxiosInstance {
+  return portalClient();
 }

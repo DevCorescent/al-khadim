@@ -66,6 +66,7 @@ export default function JobsPage() {
   const del = useMutation({
     mutationFn: (id: string) => api.delete(`/jobs/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['jobs'] }); toast.success('Deleted'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to delete job'),
   });
 
   const togglePublish = useMutation({

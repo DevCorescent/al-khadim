@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import Modal from './Modal';
+import TemporaryPasswordPanel, { TemporaryPasswordInfo } from './TemporaryPasswordPanel';
 import { Video, MapPin, X, UserPlus } from 'lucide-react';
 
 interface Props {
@@ -38,6 +39,7 @@ export default function ScheduleInterviewModal({ isOpen, onClose, shareId, candi
   );
   const [emailInput, setEmailInput] = useState('');
   const [notes, setNotes] = useState(existing?.notes || '');
+  const [tempPassword, setTempPassword] = useState<TemporaryPasswordInfo | null>(null);
 
   function addEmails(raw: string) {
     const candidates = raw.split(/[,\n\s]/).map(s => s.trim()).filter(Boolean);
@@ -63,12 +65,26 @@ export default function ScheduleInterviewModal({ isOpen, onClose, shareId, candi
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['profile-share-detail', shareId] });
       const n = res.data.interviewersNotified || 0;
+      const candidateEmailFailed = res.data.candidateEmailSent === false;
       toast.success([
-        res.data.accountCreated
-          ? 'Interview scheduled. Candidate portal account created — login details emailed to the candidate.'
-          : 'Interview scheduled and emailed to the candidate and company.',
+        candidateEmailFailed
+          ? 'Interview scheduled, but the email to the candidate could not be sent.'
+          : res.data.accountCreated
+            ? 'Interview scheduled. Candidate portal account created — login details emailed to the candidate.'
+            : 'Interview scheduled and emailed to the candidate and company.',
         n > 0 ? `${n} interviewer${n !== 1 ? 's' : ''} notified.` : '',
       ].filter(Boolean).join(' '));
+      if (candidateEmailFailed && !res.data.temporaryPassword) {
+        toast.error('Please let the candidate know about the interview directly.');
+      }
+      // The new account's password was only in the failed candidate email — hand it to staff.
+      if (res.data.temporaryPassword) {
+        setTempPassword({
+          password: res.data.temporaryPassword,
+          who: candidateName,
+          note: 'The candidate email failed, so they have not received their portal login or the interview details.',
+        });
+      }
       if (res.data.interviewerFailures?.length) {
         toast.error(`Could not email: ${res.data.interviewerFailures.join(', ')}`);
       }
@@ -80,6 +96,7 @@ export default function ScheduleInterviewModal({ isOpen, onClose, shareId, candi
   const canSubmit = scheduledAt && (mode === 'ONLINE' ? meetLink : location);
 
   return (
+    <>
     <Modal isOpen={isOpen} onClose={onClose} title={`Schedule Interview — ${candidateName}`} size="md">
       <div className="space-y-4">
         {jobTitle && <p className="text-xs text-gray-400">For: {jobTitle}</p>}
@@ -163,5 +180,7 @@ export default function ScheduleInterviewModal({ isOpen, onClose, shareId, candi
         </button>
       </div>
     </Modal>
+    <TemporaryPasswordPanel info={tempPassword} onClose={() => setTempPassword(null)} />
+    </>
   );
 }

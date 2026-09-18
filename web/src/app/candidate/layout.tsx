@@ -4,7 +4,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useCandidateAuth } from '@/lib/candidateAuth';
 import {
-  LayoutDashboard, User, Briefcase, FileText, LogOut, ChevronRight, Bell, Share2, ClipboardList
+  LayoutDashboard, User, Briefcase, FileText, LogOut, ChevronRight, Share2, ClipboardList
 } from 'lucide-react';
 
 const nav = [
@@ -54,11 +54,6 @@ export default function CandidateLayout({ children }: { children: React.ReactNod
         <span className="text-sm text-gray-500 hidden sm:block">Candidate Portal</span>
 
         <div className="flex-1" />
-
-        {/* Notification */}
-        <button className="relative w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
-          <Bell size={16} />
-        </button>
 
         {/* Avatar */}
         <div className="flex items-center gap-2">

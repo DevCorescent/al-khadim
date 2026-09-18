@@ -14,6 +14,7 @@ import {
   BarChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import ExportMenu from '@/components/admin/ExportMenu';
+import MarkPaidModal from './_components/MarkPaidModal';
 
 const EXPORT_COLUMNS = [
   { key: 'invoiceNo',   label: 'Number' },
@@ -119,10 +120,26 @@ export default function InvoicesPage() {
     onSuccess: (doc: any) => { qc.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Duplicated'); router.push(`/admin/crm/invoices/${doc.id}/edit`); },
     onError: () => toast.error('Duplicate failed'),
   });
+  const [payingDoc, setPayingDoc] = useState<any>(null);
   const updateStatus = useMutation({
-    mutationFn: ({ id, status: s }: any) => api.put(`/invoices/${id}`, { status: s }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); qc.invalidateQueries({ queryKey: ['invoice-stats'] }); toast.success('Updated'); },
+    mutationFn: ({ id, status: s, accountId }: { id: string; status: string; accountId?: string }) =>
+      api.put(`/invoices/${id}`, accountId ? { status: s, accountId } : { status: s }),
+    onSuccess: (_r, vars) => {
+      qc.invalidateQueries({ queryKey: ['invoices'] });
+      qc.invalidateQueries({ queryKey: ['invoice-stats'] });
+      if (vars.accountId) qc.invalidateQueries({ queryKey: ['bank-accounts'] });
+      toast.success(vars.status === 'PAID' && vars.accountId ? 'Marked paid and recorded in Accounts' : 'Updated');
+      setPayingDoc(null);
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to update status'),
   });
+
+  /** Moving an unpaid document to PAID asks which bank account received the money. */
+  function changeStatus(doc: any, s: string) {
+    if (s === doc.status) return;
+    if (s === 'PAID' && !doc.paidDate) { setPayingDoc(doc); return; }
+    updateStatus.mutate({ id: doc.id, status: s });
+  }
 
   const docs  = data?.data  || [];
   const total = data?.total || 0;
@@ -313,7 +330,7 @@ export default function InvoicesPage() {
                     </td>
                     <td className="px-4 py-3 font-bold text-gray-800 whitespace-nowrap">{fmt(doc.totalAmount,doc.currency)}</td>
                     <td className="px-4 py-3">
-                      <StatusDropdown doc={doc} onUpdate={s => updateStatus.mutate({id:doc.id,status:s})}/>
+                      <StatusDropdown doc={doc} onUpdate={s => changeStatus(doc, s)}/>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
@@ -346,6 +363,12 @@ export default function InvoicesPage() {
           )}
         </div>
       )}
+      <MarkPaidModal
+        invoice={payingDoc}
+        onClose={() => setPayingDoc(null)}
+        saving={updateStatus.isPending}
+        onConfirm={accountId => payingDoc && updateStatus.mutate({ id: payingDoc.id, status: 'PAID', accountId })}
+      />
     </div>
   );
 }

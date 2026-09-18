@@ -157,6 +157,7 @@ export default function CandidateDetailPage() {
   const deleteMutation = useMutation({
     mutationFn: () => api.delete(`/candidates/${id}`),
     onSuccess: () => { toast.success('Candidate deleted'); router.push('/admin/candidates'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to delete'),
   });
 
   const { data: shares } = useQuery({

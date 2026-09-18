@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useClientAuth } from '@/lib/clientAuth';
-import { LayoutDashboard, Users2, LogOut, ChevronRight, Bell, Clock, XCircle, Briefcase } from 'lucide-react';
+import { LayoutDashboard, Users2, LogOut, ChevronRight, Clock, XCircle, Briefcase } from 'lucide-react';
 
 const PUBLIC_PATHS = ['/company/login', '/company/register', '/company/accept-invite', '/company/view'];
 
@@ -100,10 +100,6 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
         <span className="text-sm text-gray-500 hidden sm:block">Company Portal</span>
 
         <div className="flex-1" />
-
-        <button className="relative w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
-          <Bell size={16} />
-        </button>
 
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-full overflow-hidden bg-primary-100 flex items-center justify-center shrink-0">

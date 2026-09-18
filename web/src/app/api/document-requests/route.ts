@@ -1,0 +1,6 @@
+import * as documentRequests from '@/server/controllers/documentRequests.controller';
+
+export const dynamic = 'force-dynamic';
+
+export const GET = documentRequests.list;
+export const POST = documentRequests.create;

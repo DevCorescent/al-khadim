@@ -50,6 +50,7 @@ export default function InterviewsPage() {
   const del = useMutation({
     mutationFn: (id: string) => api.delete(`/interviews/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['interviews'] }); toast.success('Deleted'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to delete interview'),
   });
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {

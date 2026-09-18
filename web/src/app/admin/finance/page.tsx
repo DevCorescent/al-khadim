@@ -8,7 +8,7 @@ import {
   FileText, Landmark, Target, BarChart2, ArrowRight,
 } from 'lucide-react';
 import {
-  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine,
 } from 'recharts';
 
 function KpiCard({ label, value, icon: Icon, color = '#6366f1', sub }: any) {
@@ -61,7 +61,10 @@ export default function FinanceOverviewPage() {
     ? Math.round(budgetVsActual.reduce((s, b) => s + (b?.pctUsed ?? 0), 0) / budgetVsActual.length)
     : null;
 
-  const cashflowMonthly: any[] = data?.cashflow?.monthly ?? [];
+  // Months after the current one haven't happened yet; plotting them as zero would read as real data.
+  const currentMonth = new Date().getMonth();
+  const cashflowMonthly: any[] = (data?.cashflow?.monthly ?? []).slice(0, currentMonth + 1);
+  const cashflow = data?.cashflow;
 
   return (
     <div className="p-5 min-h-screen bg-gray-50 space-y-6">
@@ -123,7 +126,7 @@ export default function FinanceOverviewPage() {
                 {data?.pnl?.netMarginPct != null && (
                   <div className="flex items-center justify-between text-xs text-gray-400">
                     <span>Net Margin</span>
-                    <span>{data.pnl.netMarginPct}%</span>
+                    <span>{Number(data.pnl.netMarginPct).toFixed(1)}%</span>
                   </div>
                 )}
               </div>
@@ -131,21 +134,44 @@ export default function FinanceOverviewPage() {
 
             {/* Cash flow chart */}
             <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 p-6">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold text-gray-900">Cash Flow Trend</h3>
                 <span className="text-xs text-gray-400 font-mono">{settings.currency}</span>
               </div>
-              {cashflowMonthly.length > 0 ? (
+              {cashflow && (
+                <div className="grid grid-cols-4 gap-2 mb-4 text-xs">
+                  {[
+                    { label: 'Opening', value: cashflow.openingBalance, cls: 'text-gray-700' },
+                    { label: 'Cash In', value: cashflow.cashIn, cls: 'text-emerald-600' },
+                    { label: 'Cash Out', value: -cashflow.cashOut, cls: 'text-red-500' },
+                    { label: 'Closing', value: cashflow.closingBalance, cls: 'text-gray-900' },
+                  ].map(s => (
+                    <div key={s.label} className="bg-gray-50 rounded-lg px-3 py-2">
+                      <p className="text-gray-400">{s.label}</p>
+                      <p className={`font-bold ${s.cls}`}>{fmtCurrency(s.value)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {cashflowMonthly.some(m => m.in || m.out) ? (
                 <ResponsiveContainer width="100%" height={220}>
-                  <ComposedChart data={cashflowMonthly} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                    <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false}
-                      tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v} />
-                    <Tooltip formatter={(v: number) => fmtCurrency(v)} contentStyle={{ fontSize: 11, borderRadius: 8 }} />
-                    <Bar dataKey="in" fill="#10b98150" name="Cash In" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="out" fill="#ef444450" name="Cash Out" radius={[4, 4, 0, 0]} />
-                    <Line type="monotone" dataKey="net" stroke="#6366f1" strokeWidth={2} dot={false} name="Net" />
+                  <ComposedChart data={cashflowMonthly} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+                    <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false}
+                      tickFormatter={m => String(m).split(' ')[0]} />
+                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={48}
+                      tickFormatter={v => new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(v)} />
+                    <Tooltip
+                      formatter={(v: number, name: string) => [fmtCurrency(name === 'Cash Out' ? -v : v), name]}
+                      contentStyle={{ fontSize: 11, borderRadius: 8 }}
+                      cursor={{ fill: '#f9fafb' }} />
+                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                    <ReferenceLine y={0} stroke="#d1d5db" />
+                    <Bar dataKey="in" fill="#10b981" fillOpacity={0.8} name="Cash In" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                    <Bar dataKey="out" fill="#ef4444" fillOpacity={0.8} name="Cash Out" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                    {/* Straight segments: monthly totals are discrete points, so smoothing would invent values between months. */}
+                    <Line type="linear" dataKey="net" stroke="#6366f1" strokeWidth={2} name="Net"
+                      dot={{ r: 3, fill: '#6366f1' }} activeDot={{ r: 5 }} />
                   </ComposedChart>
                 </ResponsiveContainer>
               ) : (

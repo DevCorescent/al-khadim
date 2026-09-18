@@ -100,6 +100,7 @@ export default function CandidatesPage() {
   const del = useMutation({
     mutationFn: (id: string) => api.delete(`/candidates/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['candidates'] }); toast.success('Deleted'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to delete candidate'),
   });
 
   const toggleVisibility = useMutation({

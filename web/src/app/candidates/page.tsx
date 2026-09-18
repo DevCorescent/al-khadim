@@ -5,9 +5,7 @@ import axios from 'axios';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { Search, MapPin, Briefcase, Star, ArrowRight, Users, Clock, X, Lock } from 'lucide-react';
-import { useClientAuth } from '@/lib/clientAuth';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001';
 
@@ -167,19 +165,13 @@ const CARD_ACCENT = [
 ];
 
 function CandidateCard({ c, index }: { c: any; index: number }) {
-  const router = useRouter();
-  const { isAuthenticated } = useClientAuth();
   const initials = `${c.firstName?.[0] || ''}${c.lastName?.[0] || ''}`;
   const accent = CARD_ACCENT[index % CARD_ACCENT.length];
 
-  function handleView() {
-    router.push(isAuthenticated ? '/company/dashboard' : '/company/register');
-  }
-
   return (
-    <div
-      onClick={handleView}
-      className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-xl hover:-translate-y-1 hover:border-primary-100 transition-all duration-200 cursor-pointer group"
+    <Link
+      href={`/candidates/${c.id}`}
+      className="block bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-xl hover:-translate-y-1 hover:border-primary-100 transition-all duration-200 cursor-pointer group"
     >
       {/* Gradient top bar */}
       <div className={`h-1.5 bg-gradient-to-r ${accent}`} />
@@ -240,7 +232,7 @@ function CandidateCard({ c, index }: { c: any; index: number }) {
           )}
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 

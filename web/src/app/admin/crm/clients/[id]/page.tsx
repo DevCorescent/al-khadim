@@ -19,6 +19,7 @@ import {
 import Link from 'next/link';
 import Modal from '@/components/admin/Modal';
 import ActivityTimeline from '@/components/admin/crm/ActivityTimeline';
+import ClientFormModal from '@/components/admin/crm/ClientFormModal';
 
 const COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#3b82f6','#a855f7','#ec4899','#14b8a6'];
 
@@ -38,6 +39,9 @@ const statusColor: Record<string, string> = {
   ON_HOLD: 'bg-amber-100 text-amber-700',
   PAID: 'bg-emerald-100 text-emerald-700',
   PENDING: 'bg-amber-100 text-amber-700',
+  SENT: 'bg-amber-100 text-amber-700',
+  DRAFT: 'bg-gray-100 text-gray-500',
+  CANCELLED: 'bg-gray-100 text-gray-400',
   OVERDUE: 'bg-red-100 text-red-600',
   NEW: 'bg-blue-100 text-blue-700',
   APPROVED: 'bg-emerald-100 text-emerald-700',
@@ -92,6 +96,7 @@ export default function ClientDetailPage() {
   const [newDealOpen, setNewDealOpen] = useState(false);
   const [tagInput, setTagInput] = useState('');
   const [tagFocused, setTagFocused] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['client-detail', id],
@@ -118,6 +123,17 @@ export default function ClientDetailPage() {
       setNewDealOpen(false);
     },
     onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to create deal'),
+  });
+
+  const updateClientMutation = useMutation({
+    mutationFn: (body: any) => api.put(`/clients/${id}`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['client-detail', id] });
+      qc.invalidateQueries({ queryKey: ['clients'] });
+      toast.success('Client updated');
+      setEditOpen(false);
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to update client'),
   });
 
   const updateTagsMutation = useMutation({
@@ -151,6 +167,7 @@ export default function ClientDetailPage() {
   const toggleActiveMutation = useMutation({
     mutationFn: (userId: string) => api.patch(`/client-users/${userId}/toggle-active`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['client-detail', id] }); toast.success('Updated'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to update portal user'),
   });
 
   const resendInviteMutation = useMutation({
@@ -190,6 +207,13 @@ export default function ClientDetailPage() {
   function removeTag(tag: string) {
     updateTagsMutation.mutate((client.tags || []).filter((x: string) => x !== tag));
   }
+
+  // Outstanding invoices are SENT (awaiting payment) or OVERDUE; there is no PENDING invoice status.
+  const invoiceBreakdown = [
+    { name: 'Paid',              value: invoices.filter((i: any) => i.status === 'PAID').length,    color: '#10b981' },
+    { name: 'Sent (unpaid)',     value: invoices.filter((i: any) => i.status === 'SENT').length,    color: '#f59e0b' },
+    { name: 'Overdue',           value: invoices.filter((i: any) => i.status === 'OVERDUE').length, color: '#ef4444' },
+  ].filter(d => d.value > 0);
 
   const tagSuggestions = (allTags || [])
     .filter((t: string) => !(client.tags || []).includes(t))
@@ -294,11 +318,11 @@ export default function ClientDetailPage() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <Link href={`/admin/crm?edit=${id}`}
+            <button onClick={() => setEditOpen(true)}
               className="text-sm font-semibold border border-gray-200 px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors text-gray-600">
               Edit Client
-            </Link>
-            <Link href={`/admin/crm/invoices?client=${id}`}
+            </button>
+            <Link href={`/admin/crm/invoices/new?clientId=${id}`}
               className="text-sm font-semibold bg-primary-400 text-white px-4 py-2 rounded-xl hover:bg-primary-500 transition-colors">
               + Invoice
             </Link>
@@ -315,7 +339,11 @@ export default function ClientDetailPage() {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <button
-                onClick={() => { const reason = prompt('Reason for rejection (optional):') || ''; rejectMutation.mutate(reason); }}
+                onClick={() => {
+                  const reason = prompt('Reason for rejection (optional):');
+                  if (reason === null) return; // cancelled
+                  rejectMutation.mutate(reason);
+                }}
                 disabled={rejectMutation.isPending}
                 className="text-sm font-semibold border border-red-200 text-red-600 px-4 py-2 rounded-xl hover:bg-red-50 transition-colors disabled:opacity-60"
               >
@@ -504,14 +532,10 @@ export default function ClientDetailPage() {
                   <ResponsiveContainer width="100%" height={200}>
                     <PieChart>
                       <Pie
-                        data={[
-                          { name: 'Paid',    value: invoices.filter((i: any) => i.status === 'PAID').length },
-                          { name: 'Pending', value: invoices.filter((i: any) => i.status === 'PENDING').length },
-                          { name: 'Overdue', value: invoices.filter((i: any) => i.status === 'OVERDUE').length },
-                        ].filter(d => d.value > 0)}
+                        data={invoiceBreakdown}
                         dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75}
                       >
-                        {['#10b981','#f59e0b','#ef4444'].map((c, i) => <Cell key={i} fill={c} />)}
+                        {invoiceBreakdown.map(d => <Cell key={d.name} fill={d.color} />)}
                       </Pie>
                       <Tooltip />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
@@ -950,6 +974,14 @@ export default function ClientDetailPage() {
           </div>
         </form>
       </Modal>
+
+      <ClientFormModal
+        isOpen={editOpen}
+        onClose={() => setEditOpen(false)}
+        editing={client}
+        saving={updateClientMutation.isPending}
+        onSubmit={body => updateClientMutation.mutate(body)}
+      />
     </div>
   );
 }

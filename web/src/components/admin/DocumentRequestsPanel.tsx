@@ -60,6 +60,7 @@ export default function DocumentRequestsPanel({ candidateId, trackingId }: { can
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/document-requests/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['document-requests', candidateId] }); toast.success('Removed'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to delete'),
   });
 
   function download(id: string, title: string) {

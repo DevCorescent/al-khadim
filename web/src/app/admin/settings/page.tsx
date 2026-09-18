@@ -137,6 +137,7 @@ export default function SettingsPage() {
   const del = useMutation({
     mutationFn: (id: string) => api.delete(`/users/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); toast.success('Deleted'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to delete user'),
   });
 
   const changePw = useMutation({

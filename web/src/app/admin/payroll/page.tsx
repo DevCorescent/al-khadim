@@ -44,6 +44,7 @@ export default function PayrollPage() {
   const approve = useMutation({
     mutationFn: (id: string) => api.post(`/payroll/${id}/approve`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['payroll'] }); toast.success('Payroll approved'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to approve payroll'),
   });
 
   const markPaid = useMutation({
@@ -164,7 +165,7 @@ export default function PayrollPage() {
             <label className="label">Pay From Account</label>
             <select name="accountId" className="input" defaultValue="">
               <option value="">— None (record without a transaction) —</option>
-              {accounts?.map((a: any) => (
+              {accounts?.filter((a: any) => a.isActive !== false).map((a: any) => (
                 <option key={a.id} value={a.id}>{a.name} ({fmtCurrency(a.currentBalance)})</option>
               ))}
             </select>

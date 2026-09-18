@@ -11,7 +11,13 @@ function SiteConfigLoader() {
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient({
-    defaultOptions: { queries: { staleTime: 30000, retry: 1 } },
+    defaultOptions: {
+      queries: {
+        staleTime: 30000,
+        // Retry once for network/server errors, never for auth or client errors (401/403/404…).
+        retry: (count, err: any) => count < 1 && !(err?.response?.status >= 400 && err?.response?.status < 500),
+      },
+    },
   }));
   return (
     <QueryClientProvider client={queryClient}>

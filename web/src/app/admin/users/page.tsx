@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
-import { useAuth } from '@/lib/auth';
+import { useAuth, useCan } from '@/lib/auth';
 import Link from 'next/link';
 import {
   Plus, Pencil, Trash2, ToggleLeft, ToggleRight, KeyRound,
@@ -229,6 +229,12 @@ function ResetPasswordModal({ user, onClose }: { user: any; onClose: () => void 
 export default function UsersPage() {
   const { user: me } = useAuth();
   const qc = useQueryClient();
+  const can = useCan();
+  const canCreate = can('users', 'create');
+  const canEdit   = can('users', 'edit');
+  const canDelete = me?.role === 'SUPER_ADMIN'; // server: users.delete AND SUPER_ADMIN
+  // Only a SUPER_ADMIN may manage SUPER_ADMIN accounts (users.controller loadManageableUser).
+  const canManage = (u: any) => canEdit && (u.role !== 'SUPER_ADMIN' || me?.role === 'SUPER_ADMIN');
   const [search, setSearch]       = useState('');
   const [filterRole, setFilterRole] = useState('');
   const [modal, setModal]         = useState(false);
@@ -299,10 +305,10 @@ export default function UsersPage() {
             className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-700 text-sm font-bold rounded-xl hover:bg-gray-50 transition-colors">
             <Shield size={14} /> Manage Roles
           </Link>
-          <button onClick={() => { setEditing(null); setModal(true); }}
+          {canCreate && <button onClick={() => { setEditing(null); setModal(true); }}
             className="flex items-center gap-2 px-4 py-2.5 bg-primary-400 text-white text-sm font-bold rounded-xl hover:bg-primary-500 transition-all shadow-sm shadow-primary-400/20">
             <Plus size={14} /> New User
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -313,7 +319,7 @@ export default function UsersPage() {
         <div className="bg-white border border-gray-200 rounded-2xl py-16 text-center">
           <Users size={32} className="text-gray-200 mx-auto mb-3" />
           <p className="text-gray-500 font-semibold">No users found</p>
-          <button onClick={() => setModal(true)} className="mt-3 text-primary-500 text-sm font-bold hover:underline">Create first user →</button>
+          {canCreate && <button onClick={() => setModal(true)} className="mt-3 text-primary-500 text-sm font-bold hover:underline">Create first user →</button>}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -352,30 +358,36 @@ export default function UsersPage() {
               </div>
 
               {/* Actions */}
+              {(canManage(u) || (canDelete && u.id !== me?.id)) && (
               <div className="flex items-center gap-1.5 border-t border-gray-100 pt-3">
-                <button onClick={() => { setEditing(u); setModal(true); }}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
-                  <Pencil size={12} /> Edit
-                </button>
-                <button onClick={() => setResetUser(u)}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold text-amber-600 hover:bg-amber-50 rounded-lg transition-colors">
-                  <KeyRound size={12} /> Reset PW
-                </button>
-                {me?.role === 'SUPER_ADMIN' && u.id !== me?.id && (
+                {canManage(u) && (
                   <>
-                    <button onClick={() => toggleActive.mutate(u.id)}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-                        u.isActive ? 'text-rose-500 hover:bg-rose-50' : 'text-emerald-600 hover:bg-emerald-50'
-                      }`}>
-                      {u.isActive ? <><ToggleLeft size={12} /> Disable</> : <><ToggleRight size={12} /> Enable</>}
+                    <button onClick={() => { setEditing(u); setModal(true); }}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
+                      <Pencil size={12} /> Edit
                     </button>
-                    <button onClick={() => { if (confirm(`Delete ${u.name}? This cannot be undone.`)) del.mutate(u.id); }}
-                      className="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-                      <Trash2 size={13} />
+                    <button onClick={() => setResetUser(u)}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold text-amber-600 hover:bg-amber-50 rounded-lg transition-colors">
+                      <KeyRound size={12} /> Reset PW
                     </button>
                   </>
                 )}
+                {canManage(u) && u.id !== me?.id && (
+                  <button onClick={() => toggleActive.mutate(u.id)}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                      u.isActive ? 'text-rose-500 hover:bg-rose-50' : 'text-emerald-600 hover:bg-emerald-50'
+                    }`}>
+                    {u.isActive ? <><ToggleLeft size={12} /> Disable</> : <><ToggleRight size={12} /> Enable</>}
+                  </button>
+                )}
+                {canDelete && u.id !== me?.id && (
+                  <button onClick={() => { if (confirm(`Delete ${u.name}? This cannot be undone.`)) del.mutate(u.id); }}
+                    className="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                    <Trash2 size={13} />
+                  </button>
+                )}
               </div>
+              )}
             </div>
           ))}
         </div>

@@ -1,14 +1,42 @@
 'use client';
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import toast from 'react-hot-toast';
-import { Upload, CheckCircle } from 'lucide-react';
+import { Upload, CheckCircle, Briefcase } from 'lucide-react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
+/**
+ * `?job=<id>&jobTitle=<title>` comes from the careers "Apply Now" button. The public registration
+ * API has no job field, so the job is only shown here for the applicant's reference.
+ */
+function useApplyingFor() {
+  const searchParams = useSearchParams();
+  const jobId = searchParams.get('job');
+  const titleParam = searchParams.get('jobTitle');
+  const { data: jobs } = useQuery({
+    queryKey: ['public-jobs'],
+    queryFn: () => axios.get(`${API_URL}/api/jobs/public`).then(r => r.data),
+    enabled: !!jobId && !titleParam,
+  });
+  if (!jobId) return null;
+  return titleParam || (Array.isArray(jobs) ? jobs.find((j: any) => j.id === jobId)?.title : null) || null;
+}
+
 export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-400">Loading…</div>}>
+      <RegisterContent />
+    </Suspense>
+  );
+}
+
+function RegisterContent() {
+  const applyingFor = useApplyingFor();
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [cvFile, setCvFile] = useState<File | null>(null);
@@ -60,6 +88,12 @@ export default function RegisterPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="card space-y-5">
+            {applyingFor && (
+              <div className="flex items-center gap-2 rounded-lg bg-primary-50 border border-primary-100 px-4 py-3 text-sm text-gray-700">
+                <Briefcase size={16} className="text-primary-400 shrink-0" />
+                <span>Applying for: <span className="font-semibold text-gray-900">{applyingFor}</span></span>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="label">First Name *</label>

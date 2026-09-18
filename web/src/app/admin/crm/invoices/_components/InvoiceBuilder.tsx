@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
+import MarkPaidModal from './MarkPaidModal';
 import { Plus, Trash2, ChevronDown, Save, Eye, ArrowLeft, Info, RefreshCw, Palette, CheckSquare } from 'lucide-react';
 
 /* ─── Currency data ──────────────────────────────────────────── */
@@ -165,13 +166,26 @@ function isDark(hex: string) {
 }
 
 /* ─── component ──────────────────────────────────────────────── */
-export default function InvoiceBuilder({ existing, defaultType = 'INVOICE' }: { existing?: any; defaultType?: string }) {
+/**
+ * The API stores `discount` as the computed AMOUNT even for PERCENT discounts, so convert it back
+ * to a percentage of the subtotal when loading a PERCENT invoice into the form.
+ */
+function loadDiscount(existing: any): number {
+  const stored = Number(existing.discount) || 0;
+  if (existing.discountType !== 'PERCENT' || !stored) return stored;
+  const subtotal = Number(existing.subtotal)
+    || (existing.items || []).reduce((s: number, i: any) => s + (Number(i.qty) || 0) * (Number(i.unitPrice) || 0), 0);
+  if (!subtotal) return 0;
+  return Math.round((stored / subtotal) * 100 * 10000) / 10000;
+}
+
+export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defaultClientId = '' }: { existing?: any; defaultType?: string; defaultClientId?: string }) {
   const router  = useRouter();
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'details'|'from'|'billing'|'payment'|'design'>('details');
 
   const init = useCallback((): FormState => {
-    if (!existing) return { ...BLANK, docType: defaultType };
+    if (!existing) return { ...BLANK, docType: defaultType, clientId: defaultClientId };
     return {
       docType:       existing.docType       || defaultType,
       clientId:      existing.clientId      || '',
@@ -192,7 +206,7 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE' }: { 
       billingAddress:existing.billingAddress|| [existing.client?.address, existing.client?.city, existing.client?.country].filter(Boolean).join(', ') || '',
       billingEmail:  existing.billingEmail  || existing.client?.email || '',
       billingPhone:  existing.billingPhone  || existing.client?.phone || '',
-      discount:      existing.discount      || 0,
+      discount:      loadDiscount(existing),
       discountType:  existing.discountType  || 'FIXED',
       taxRate:       existing.taxRate       ?? 0,
       taxLabel:      existing.taxLabel      || 'VAT',
@@ -225,7 +239,7 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE' }: { 
       showSignature:   existing.showSignature   ?? false,
       footerText:      existing.footerText      || '',
     };
-  }, [existing, defaultType]);
+  }, [existing, defaultType, defaultClientId]);
 
   const [form, setForm] = useState<FormState>(init);
   useEffect(() => { setForm(init()); }, [init]);
@@ -273,14 +287,22 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE' }: { 
   const fmtC = (n:number) => `${form.currency} ${fmtN(n)}`;
 
   /* ─── save ─── */
-  async function save(andPreview=false) {
+  // Saving an existing unpaid document as PAID first asks which bank account received the money.
+  const [pendingPaidSave, setPendingPaidSave] = useState<{ andPreview: boolean } | null>(null);
+
+  async function save(andPreview=false, paid?: { accountId?: string }) {
     if (!form.clientId) { toast.error('Please select a client'); return; }
     if (form.items.some(i => !i.description.trim())) { toast.error('All line items need a description'); return; }
+    if (existing && !paid && form.status === 'PAID' && !existing.paidDate) {
+      setPendingPaidSave({ andPreview });
+      return;
+    }
     setSaving(true);
     try {
       const res = existing
-        ? await api.put(`/invoices/${existing.id}`, form)
+        ? await api.put(`/invoices/${existing.id}`, paid?.accountId ? { ...form, accountId: paid.accountId } : form)
         : await api.post('/invoices', form);
+      setPendingPaidSave(null);
       toast.success(existing ? 'Saved' : 'Created');
       if (andPreview) router.push(`/admin/crm/invoices/${res.data.id}`);
       else if (!existing) router.push(`/admin/crm/invoices/${res.data.id}/edit`);
@@ -863,6 +885,13 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE' }: { 
           </div>
         </div>
       </div>
+
+      <MarkPaidModal
+        invoice={pendingPaidSave && existing ? { ...existing, currency: form.currency, totalAmount: total } : null}
+        onClose={() => setPendingPaidSave(null)}
+        saving={saving}
+        onConfirm={accountId => pendingPaidSave && save(pendingPaidSave.andPreview, { accountId })}
+      />
     </div>
   );
 }

@@ -70,7 +70,7 @@ export default function HomeJobs() {
             {jobs.slice(0,6).map((job: any) => {
               const tc = TYPE_COLORS[job.type] || {bg:'#f3f4f6',text:'#374151'};
               return (
-                <Link key={job.id} href={`/careers/${job.id}`}
+                <Link key={job.id} href={`/careers?job=${encodeURIComponent(job.id)}`}
                   className="group flex flex-col gap-4 bg-white rounded-2xl border border-gray-100 p-6 hover:border-transparent transition-all duration-300"
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow='0 8px 32px rgba(37,99,235,0.12)'; (e.currentTarget as HTMLElement).style.borderColor='transparent'; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow='none'; (e.currentTarget as HTMLElement).style.borderColor='#f3f4f6'; }}>

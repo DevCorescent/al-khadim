@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import { UserCheck, XCircle, ChevronDown, ChevronUp, Eye, FileText } from 'lucide-react';
+import TemporaryPasswordPanel, { TemporaryPasswordInfo } from '@/components/admin/TemporaryPasswordPanel';
 
 const STATUS_COLORS: Record<string, string> = {
   NEW:      'bg-blue-100 text-blue-700',
@@ -25,10 +26,23 @@ export default function RegistrationsPage() {
     queryFn: () => api.get('/registrations').then(r => r.data),
   });
 
+  const [tempPassword, setTempPassword] = useState<TemporaryPasswordInfo | null>(null);
+
   const approveMutation = useMutation({
-    mutationFn: ({ id, isPublic }: { id: string; isPublic: boolean }) =>
-      api.post(`/registrations/${id}/approve`, { isPublic }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['registrations'] }); toast.success('Candidate approved! Portal account created.'); },
+    mutationFn: ({ id, isPublic }: { id: string; isPublic: boolean; who?: string }) =>
+      api.post(`/registrations/${id}/approve`, { isPublic }).then(r => r.data),
+    onSuccess: (res: any, vars) => {
+      qc.invalidateQueries({ queryKey: ['registrations'] });
+      toast.success('Candidate approved! Portal account created.');
+      // Registrations without a password get a random temporary one; show it so staff can pass it on.
+      if (res?.temporaryPassword) {
+        setTempPassword({
+          password: res.temporaryPassword,
+          who: vars.who,
+          note: 'It was also emailed to the candidate, if email is configured.',
+        });
+      }
+    },
     onError: (e: any) => toast.error(e.response?.data?.error || 'Error'),
   });
 
@@ -160,14 +174,14 @@ export default function RegistrationsPage() {
                 {r.status === 'NEW' && (
                   <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
                     <button
-                      onClick={() => { if (confirm(`Approve ${r.firstName} ${r.lastName} and create their portal account?`)) approveMutation.mutate({ id: r.id, isPublic: true }); }}
+                      onClick={() => { if (confirm(`Approve ${r.firstName} ${r.lastName} and create their portal account?`)) approveMutation.mutate({ id: r.id, isPublic: true, who: `${r.firstName} ${r.lastName} (${r.email})` }); }}
                       disabled={approveMutation.isPending}
                       className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors disabled:opacity-60"
                     >
                       <UserCheck size={13} /> Approve & Make Public
                     </button>
                     <button
-                      onClick={() => { if (confirm(`Approve ${r.firstName} as private (not shown on public page)?`)) approveMutation.mutate({ id: r.id, isPublic: false }); }}
+                      onClick={() => { if (confirm(`Approve ${r.firstName} as private (not shown on public page)?`)) approveMutation.mutate({ id: r.id, isPublic: false, who: `${r.firstName} ${r.lastName} (${r.email})` }); }}
                       disabled={approveMutation.isPending}
                       className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors disabled:opacity-60"
                     >
@@ -175,7 +189,8 @@ export default function RegistrationsPage() {
                     </button>
                     <button
                       onClick={() => {
-                        const reason = prompt('Reason for rejection (optional):') || '';
+                        const reason = prompt('Reason for rejection (optional):');
+                        if (reason === null) return; // cancelled — don't reject
                         rejectMutation.mutate({ id: r.id, reason });
                       }}
                       disabled={rejectMutation.isPending}
@@ -207,6 +222,7 @@ export default function RegistrationsPage() {
           <div className="text-center py-16 text-gray-400 text-sm">No registrations found.</div>
         )}
       </div>
+      <TemporaryPasswordPanel info={tempPassword} onClose={() => setTempPassword(null)} />
     </div>
   );
 }

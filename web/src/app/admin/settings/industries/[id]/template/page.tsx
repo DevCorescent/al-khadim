@@ -9,6 +9,7 @@ import {
   ArrowLeft, Plus, Trash2, ChevronUp, ChevronDown, ChevronRight, Save, Eye,
 } from 'lucide-react';
 
+const DEFAULT_STATUS_OPTIONS = ['Pending', 'In Progress', 'Complete', 'Not Applicable'];
 const FIELD_TYPES: TrackingField['type'][] = ['text', 'textarea', 'number', 'date', 'boolean', 'select', 'checklist', 'table'];
 
 function slugify(label: string) {
@@ -17,6 +18,50 @@ function slugify(label: string) {
 
 let uidSeq = 0;
 function uid() { uidSeq += 1; return `tmp_${Date.now()}_${uidSeq}`; }
+
+/**
+ * New sections/fields/columns get a temporary `tmp_` key that doubles as their React key. It is
+ * only turned into a slug of the label when saving: re-keying while typing remounted the input
+ * and lost focus after every keystroke.
+ */
+function finalKeys<T extends { key: string; label: string }>(list: T[]): T[] {
+  const used = new Set(list.filter((x) => !x.key.startsWith('tmp_')).map((x) => x.key));
+  return list.map((x) => {
+    if (!x.key.startsWith('tmp_')) return x;
+    const base = slugify(x.label);
+    let key = base;
+    for (let n = 2; used.has(key); n++) key = `${base}_${n}`;
+    used.add(key);
+    return { ...x, key };
+  });
+}
+
+function finalizeSections(sections: TrackingSection[]): TrackingSection[] {
+  return finalKeys(sections).map((sec) => ({
+    ...sec,
+    fields: finalKeys(sec.fields).map((f) => (f.columns ? { ...f, columns: finalKeys(f.columns) } : f)),
+  }));
+}
+
+/** Comma-separated list input that keeps the raw text while typing (so "a, " isn't eaten). */
+function CommaListInput({ value, onChange, className, placeholder }: {
+  value: string[]; onChange: (v: string[]) => void; className?: string; placeholder?: string;
+}) {
+  const parse = (t: string) => t.split(',').map((x) => x.trim()).filter(Boolean);
+  const [text, setText] = useState(value.join(', '));
+  // Resync only when the list changed from outside (not from our own typing).
+  useEffect(() => {
+    setText((t) => (JSON.stringify(parse(t)) === JSON.stringify(value) ? t : value.join(', ')));
+  }, [value]);
+  return (
+    <input
+      value={text}
+      onChange={(e) => { setText(e.target.value); onChange(parse(e.target.value)); }}
+      className={className}
+      placeholder={placeholder}
+    />
+  );
+}
 
 export default function IndustryTemplatePage() {
   const { id } = useParams<{ id: string }>();
@@ -40,8 +85,10 @@ export default function IndustryTemplatePage() {
   }, [industry, loaded]);
 
   const saveMutation = useMutation({
-    mutationFn: () => api.put(`/industries/${id}`, { trackingSections: sections }),
-    onSuccess: () => {
+    mutationFn: () => api.put(`/industries/${id}`, { trackingSections: finalizeSections(sections) }).then((r) => r.data),
+    onSuccess: (saved: any) => {
+      // Adopt the final (slugged) keys so a second save keeps them stable.
+      if (Array.isArray(saved?.trackingSections)) setSections(saved.trackingSections);
       qc.invalidateQueries({ queryKey: ['industry', id] });
       qc.invalidateQueries({ queryKey: ['tracking-templates'] });
       toast.success('Template saved');
@@ -127,7 +174,6 @@ export default function IndustryTemplatePage() {
               <input
                 value={sec.label}
                 onChange={(e) => updateSection(i, { label: e.target.value })}
-                onBlur={(e) => { if (sec.key.startsWith('tmp_')) updateSection(i, { key: slugify(e.target.value) }); }}
                 className="flex-1 bg-transparent font-bold text-sm text-gray-800 focus:outline-none"
               />
               <span className="text-[10px] font-mono text-gray-300">{sec.fields.length} field{sec.fields.length !== 1 ? 's' : ''}</span>
@@ -204,7 +250,6 @@ function FieldEditor({ field, onChange, onRemove, onMoveUp, onMoveDown, canMoveU
         <input
           value={field.label}
           onChange={(e) => onChange({ label: e.target.value })}
-          onBlur={(e) => { if (field.key.startsWith('tmp_')) onChange({ key: slugify(e.target.value) }); }}
           className="flex-1 text-sm font-semibold text-gray-800 border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-400/30"
           placeholder="Field label"
         />
@@ -221,9 +266,9 @@ function FieldEditor({ field, onChange, onRemove, onMoveUp, onMoveDown, canMoveU
       </div>
 
       {field.type === 'select' && (
-        <input
-          value={(field.options || []).join(', ')}
-          onChange={(e) => onChange({ options: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
+        <CommaListInput
+          value={field.options || []}
+          onChange={(options) => onChange({ options })}
           className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none"
           placeholder="Options, comma-separated (e.g. Yes, No, N/A)"
         />
@@ -231,15 +276,15 @@ function FieldEditor({ field, onChange, onRemove, onMoveUp, onMoveDown, canMoveU
 
       {field.type === 'checklist' && (
         <div className="space-y-1.5">
-          <input
-            value={(field.items || []).join(', ')}
-            onChange={(e) => onChange({ items: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
+          <CommaListInput
+            value={field.items || []}
+            onChange={(items) => onChange({ items })}
             className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none"
             placeholder="Checklist items, comma-separated"
           />
-          <input
-            value={(field.statusOptions || ['Pending', 'In Progress', 'Complete', 'Not Applicable']).join(', ')}
-            onChange={(e) => onChange({ statusOptions: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
+          <CommaListInput
+            value={field.statusOptions || DEFAULT_STATUS_OPTIONS}
+            onChange={(statusOptions) => onChange({ statusOptions })}
             className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none"
             placeholder="Status options, comma-separated"
           />
@@ -274,7 +319,7 @@ function TableColumnsEditor({ columns, onChange }: { columns: { key: string; lab
         <div key={col.key} className="flex items-center gap-1.5">
           <input
             value={col.label}
-            onChange={(e) => updateColumn(i, { label: e.target.value, key: col.key.startsWith('tmp_') ? slugify(e.target.value) : col.key })}
+            onChange={(e) => updateColumn(i, { label: e.target.value })}
             className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none"
             placeholder="Column label"
           />
@@ -285,9 +330,9 @@ function TableColumnsEditor({ columns, onChange }: { columns: { key: string; lab
             <option value="select">select</option>
           </select>
           {col.type === 'select' && (
-            <input
-              value={(col.options || []).join(', ')}
-              onChange={(e) => updateColumn(i, { options: e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean) })}
+            <CommaListInput
+              value={col.options || []}
+              onChange={(options) => updateColumn(i, { options })}
               className="w-28 text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none"
               placeholder="options"
             />

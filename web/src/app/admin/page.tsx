@@ -163,7 +163,7 @@ export default function AdminDashboard() {
                 <Tooltip formatter={(v: number) => fmtCurrency(v)} contentStyle={{fontSize:11,borderRadius:8}}/>
                 <Bar dataKey="invoiced" fill="#6366f120" name="Invoiced" radius={[4,4,0,0]}/>
                 <Bar dataKey="paid" fill="#6366f1" name="Paid" radius={[4,4,0,0]}/>
-                <Line type="monotone" dataKey="paid" stroke="#10b981" strokeWidth={2} dot={false} name="Paid trend"/>
+                <Line type="linear" dataKey="paid" stroke="#10b981" strokeWidth={2} dot={{ r: 2.5, fill: "#10b981" }} name="Paid trend"/>
               </ComposedChart>
             </ResponsiveContainer>
           ) : (

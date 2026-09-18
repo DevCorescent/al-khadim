@@ -48,6 +48,7 @@ export default function LeavePage() {
   const updateStatus = useMutation({
     mutationFn: ({ id, status }: { id: string, status: string }) => api.put(`/leave/${id}`, { status }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['leave'] }); toast.success('Status updated'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to update leave status'),
   });
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {

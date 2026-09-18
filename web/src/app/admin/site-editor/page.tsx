@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
+import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
   Palette, Layout, Monitor, Layers, AlignLeft, Save, RefreshCw,
@@ -96,8 +97,8 @@ function ImageField({ label, value, onChange, token, hint }: any) {
       });
       onChange(data.url);
       toast.success('Image uploaded');
-    } catch {
-      toast.error('Upload failed');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.error || 'Upload failed');
     } finally {
       setUploading(false);
     }
@@ -260,42 +261,70 @@ export default function SiteEditorPage() {
   const [sections, setSections] = useState<any>(null);
   const [footer,   setFooter]   = useState<any>(null);
 
-  useEffect(() => {
-    if (config) {
-      setTheme(JSON.parse(JSON.stringify(config.theme)));
-      setNavbar(JSON.parse(JSON.stringify(config.navbar)));
-      setHero(JSON.parse(JSON.stringify(config.hero)));
-      setSections(JSON.parse(JSON.stringify(config.sections)));
-      setFooter(JSON.parse(JSON.stringify(config.footer)));
+  /** Replaces the local editable copies with (deep copies of) the given saved config. */
+  function loadFromConfig(cfg: any) {
+    if (!cfg) return;
+    setTheme(JSON.parse(JSON.stringify(cfg.theme)));
+    setNavbar(JSON.parse(JSON.stringify(cfg.navbar)));
+    setHero(JSON.parse(JSON.stringify(cfg.hero)));
+    setSections(JSON.parse(JSON.stringify(cfg.sections)));
+    setFooter(JSON.parse(JSON.stringify(cfg.footer)));
+  }
+
+  useEffect(() => { loadFromConfig(config); }, [config]);
+
+  /**
+   * Discards unsaved edits. A plain refetch isn't enough: when the server data is unchanged,
+   * react-query keeps the same `config` object and the effect above never re-runs.
+   */
+  async function resetEdits() {
+    if (!confirm('Discard all unsaved changes and reload the saved site configuration?')) return;
+    const res = await refetch();
+    if (res.error) {
+      toast.error((res.error as any)?.response?.data?.error || 'Could not reload the saved configuration');
+      return;
     }
-  }, [config]);
+    loadFromConfig(res.data ?? config);
+    toast.success('Unsaved changes discarded');
+  }
 
   const saving = useRef(false);
+  const [savingAll, setSavingAll] = useState(false);
+  const errMsg = (e: any, fallback: string) => e?.response?.data?.error || fallback;
 
   async function saveSection(key: string, value: any) {
-    if (!accessToken || saving.current) return;
+    if (saving.current) return;
     saving.current = true;
     try {
-      await axios.put(`${API}/api/site-config/${key}`, value, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      await api.put(`/site-config/${key}`, value); // shared client: refreshes an expired access token
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
       toast.success(`${key.charAt(0).toUpperCase() + key.slice(1)} saved!`);
-    } catch {
-      toast.error('Save failed');
+    } catch (e: any) {
+      toast.error(errMsg(e, 'Save failed'));
     } finally {
       saving.current = false;
     }
   }
 
   async function saveAll() {
+    if (savingAll) return;
     const map: Record<string, any> = { theme, navbar, hero, sections, footer };
-    for (const [key, val] of Object.entries(map)) {
-      if (!val) continue;
-      await axios.put(`${API}/api/site-config/${key}`, val, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+    setSavingAll(true);
+    const savedKeys: string[] = [];
+    try {
+      for (const [key, val] of Object.entries(map)) {
+        if (!val) continue;
+        try {
+          await api.put(`/site-config/${key}`, val); // shared client: refreshes an expired access token
+          savedKeys.push(key);
+        } catch (e: any) {
+          toast.error(`Could not save ${key}: ${errMsg(e, 'Save failed')}${savedKeys.length ? ` (already saved: ${savedKeys.join(', ')})` : ''}`);
+          return;
+        }
+      }
+    } finally {
+      setSavingAll(false);
     }
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
@@ -335,12 +364,12 @@ export default function SiteEditorPage() {
             className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 border border-gray-200 px-3 py-2 rounded-xl hover:bg-gray-50 transition-colors">
             <ExternalLink size={12} /> Preview Site
           </a>
-          <button onClick={() => refetch()} className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 border border-gray-200 px-3 py-2 rounded-xl hover:bg-gray-50 transition-colors">
+          <button onClick={resetEdits} title="Discard unsaved changes" className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 border border-gray-200 px-3 py-2 rounded-xl hover:bg-gray-50 transition-colors">
             <RefreshCw size={12} /> Reset
           </button>
-          <button onClick={saveAll}
-            className={`flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl transition-all ${saved ? 'bg-emerald-500 text-white' : 'bg-primary-400 text-white hover:bg-primary-500'}`}>
-            {saved ? <><Check size={12} /> Saved!</> : <><Save size={12} /> Save All Changes</>}
+          <button onClick={saveAll} disabled={savingAll}
+            className={`flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl transition-all disabled:opacity-60 ${saved ? 'bg-emerald-500 text-white' : 'bg-primary-400 text-white hover:bg-primary-500'}`}>
+            {saved ? <><Check size={12} /> Saved!</> : savingAll ? <><Loader2 size={12} className="animate-spin" /> Saving…</> : <><Save size={12} /> Save All Changes</>}
           </button>
         </div>
       </div>

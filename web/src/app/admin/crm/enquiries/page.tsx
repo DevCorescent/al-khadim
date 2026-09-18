@@ -37,6 +37,7 @@ export default function EnquiriesPage() {
   const update = useMutation({
     mutationFn: ({ id, status }: { id: string, status: string }) => api.put(`/enquiries/${id}`, { status }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['enquiries'] }); toast.success('Status updated'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to update enquiry'),
   });
 
   const convert = useMutation({

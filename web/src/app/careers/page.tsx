@@ -14,6 +14,8 @@ function CareersContent() {
   const searchParams = useSearchParams();
   const initialQ = searchParams.get('q') ?? '';
   const [search, setSearch] = useState(initialQ);
+  // `?job=<id>` (from the home page job strip) highlights and scrolls to that job.
+  const highlightJobId = searchParams.get('job');
 
   useEffect(() => {
     const q = searchParams.get('q');
@@ -24,6 +26,11 @@ function CareersContent() {
     queryKey: ['public-jobs'],
     queryFn: () => axios.get(`${API_URL}/api/jobs/public`).then(r => r.data),
   });
+
+  useEffect(() => {
+    if (!highlightJobId || isLoading) return;
+    document.getElementById(`job-${highlightJobId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [highlightJobId, isLoading]);
 
   const filtered = jobs.filter((j: any) =>
     j.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -102,7 +109,8 @@ function CareersContent() {
                   </p>
                 )}
                 {filtered.map((job: any) => (
-                  <div key={job.id} className="card hover:shadow-md transition-shadow">
+                  <div key={job.id} id={`job-${job.id}`}
+                    className={`card hover:shadow-md transition-shadow scroll-mt-28 ${job.id === highlightJobId ? 'ring-2 ring-primary-400' : ''}`}>
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900">{job.title}</h3>
@@ -128,7 +136,7 @@ function CareersContent() {
                           )}
                         </div>
                       </div>
-                      <Link href="/register" className="btn-primary text-sm py-2.5 px-5 shrink-0">
+                      <Link href={`/register?job=${encodeURIComponent(job.id)}&jobTitle=${encodeURIComponent(job.title)}`} className="btn-primary text-sm py-2.5 px-5 shrink-0">
                         Apply Now →
                       </Link>
                     </div>

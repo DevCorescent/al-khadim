@@ -4,149 +4,49 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
+import { MODULES as MODULE_ACTIONS, ROLE_PRESETS } from '@/lib/permissionMatrix';
+import { useAuth } from '@/lib/auth';
 import {
   ArrowLeft, Plus, Pencil, Trash2, Shield, ShieldCheck, ShieldAlert,
   Eye, Users, Briefcase, Building2, FileText, DollarSign,
   BarChart3, Settings, UserCheck, Calendar, ClipboardList,
-  X, Loader2, Check, Globe, Palette, ChevronDown, ChevronUp,
+  X, Loader2, Check, Palette, ChevronDown, ChevronUp, Landmark, Mail,
+  type LucideIcon,
 } from 'lucide-react';
 
-/* ── Permission matrix definition ── */
-const MODULES = [
-  {
-    key: 'dashboard',
-    label: 'Dashboard',
-    icon: BarChart3,
-    actions: ['view'],
-  },
-  {
-    key: 'candidates',
-    label: 'Candidates',
-    icon: Users,
-    actions: ['view', 'create', 'edit', 'delete', 'export', 'make_public'],
-  },
-  {
-    key: 'jobs',
-    label: 'Job Orders',
-    icon: Briefcase,
-    actions: ['view', 'create', 'edit', 'delete'],
-  },
-  {
-    key: 'clients',
-    label: 'Clients / CRM',
-    icon: Building2,
-    actions: ['view', 'create', 'edit', 'delete'],
-  },
-  {
-    key: 'interviews',
-    label: 'Interviews',
-    icon: Calendar,
-    actions: ['view', 'create', 'edit', 'delete'],
-  },
-  {
-    key: 'employees',
-    label: 'Employees',
-    icon: UserCheck,
-    actions: ['view', 'create', 'edit', 'delete'],
-  },
-  {
-    key: 'attendance',
-    label: 'Attendance',
-    icon: ClipboardList,
-    actions: ['view', 'create', 'edit'],
-  },
-  {
-    key: 'leave',
-    label: 'Leave',
-    icon: Calendar,
-    actions: ['view', 'approve', 'reject'],
-  },
-  {
-    key: 'payroll',
-    label: 'Payroll',
-    icon: DollarSign,
-    actions: ['view', 'create', 'approve'],
-  },
-  {
-    key: 'documents',
-    label: 'Documents',
-    icon: FileText,
-    actions: ['view', 'upload', 'delete'],
-  },
-  {
-    key: 'enquiries',
-    label: 'Enquiries',
-    icon: ClipboardList,
-    actions: ['view', 'create', 'edit', 'delete'],
-  },
-  {
-    key: 'invoices',
-    label: 'Invoices',
-    icon: DollarSign,
-    actions: ['view', 'create', 'edit', 'delete'],
-  },
-  {
-    key: 'reports',
-    label: 'Reports',
-    icon: BarChart3,
-    actions: ['view', 'export'],
-  },
-  {
-    key: 'site_editor',
-    label: 'Site Editor',
-    icon: Palette,
-    actions: ['view', 'edit'],
-  },
-  {
-    key: 'users',
-    label: 'User Management',
-    icon: ShieldCheck,
-    actions: ['view', 'create', 'edit', 'delete'],
-  },
-  {
-    key: 'settings',
-    label: 'Settings',
-    icon: Settings,
-    actions: ['view', 'edit'],
-  },
-];
-
-/* Preset permission templates by system role */
-const ROLE_PRESETS: Record<string, Record<string, string[]>> = {
-  ADMIN: Object.fromEntries(MODULES.map(m => [m.key, m.actions.filter(a => a !== 'delete')])),
-  MANAGER: {
-    dashboard: ['view'], candidates: ['view','create','edit','export'],
-    jobs: ['view','create','edit'], clients: ['view','create','edit'],
-    interviews: ['view','create','edit'], employees: ['view'],
-    attendance: ['view'], leave: ['view','approve','reject'],
-    documents: ['view','upload'], reports: ['view','export'],
-    enquiries: ['view','create','edit'], invoices: ['view'],
-  },
-  RECRUITER: {
-    dashboard: ['view'], candidates: ['view','create','edit','export'],
-    jobs: ['view','create','edit'], clients: ['view'],
-    interviews: ['view','create','edit'], documents: ['view','upload'],
-    reports: ['view'],
-  },
-  HR: {
-    dashboard: ['view'], employees: ['view','create','edit'],
-    attendance: ['view','create','edit'], leave: ['view','approve','reject'],
-    payroll: ['view'], documents: ['view','upload'], reports: ['view'],
-  },
-  ACCOUNTANT: {
-    dashboard: ['view'], payroll: ['view','create','approve'],
-    invoices: ['view','create','edit'], reports: ['view','export'],
-  },
-  VIEWER: {
-    dashboard: ['view'], candidates: ['view'], jobs: ['view'],
-    clients: ['view'], reports: ['view'],
-  },
+/* ── Permission matrix: the same data the server enforces (src/lib/permissionMatrix.ts) ── */
+const MODULE_META: Record<string, { label: string; icon: LucideIcon }> = {
+  dashboard:   { label: 'Dashboard',       icon: BarChart3 },
+  candidates:  { label: 'Candidates',      icon: Users },
+  jobs:        { label: 'Job Orders',      icon: Briefcase },
+  clients:     { label: 'Clients / CRM',   icon: Building2 },
+  interviews:  { label: 'Interviews',      icon: Calendar },
+  employees:   { label: 'Employees',       icon: UserCheck },
+  attendance:  { label: 'Attendance',      icon: ClipboardList },
+  leave:       { label: 'Leave',           icon: Calendar },
+  payroll:     { label: 'Payroll',         icon: DollarSign },
+  documents:   { label: 'Documents',       icon: FileText },
+  enquiries:   { label: 'Enquiries',       icon: ClipboardList },
+  invoices:    { label: 'Invoices',        icon: DollarSign },
+  finance:     { label: 'Finance',         icon: Landmark },
+  emails:      { label: 'Emails',          icon: Mail },
+  reports:     { label: 'Reports',         icon: BarChart3 },
+  site_editor: { label: 'Site Editor',     icon: Palette },
+  users:       { label: 'User Management', icon: ShieldCheck },
+  settings:    { label: 'Settings',        icon: Settings },
 };
+
+const MODULES = Object.entries(MODULE_ACTIONS).map(([key, actions]) => ({
+  key,
+  actions,
+  label: MODULE_META[key]?.label || key,
+  icon: MODULE_META[key]?.icon || Shield,
+}));
 
 const ACTION_LABELS: Record<string, string> = {
   view: 'View', create: 'Create', edit: 'Edit', delete: 'Delete',
   export: 'Export', approve: 'Approve', reject: 'Reject',
-  upload: 'Upload', make_public: 'Make Public',
+  upload: 'Upload', make_public: 'Make Public', send: 'Send',
 };
 
 const COLORS = [
@@ -335,16 +235,18 @@ function RoleForm({ editing, onClose }: { editing: any; onClose: () => void }) {
 /* ── Built-in role viewer ── */
 const BUILTIN_ROLES = [
   { role: 'SUPER_ADMIN', label: 'Super Admin',  color: '#7c3aed', description: 'Full unrestricted access to everything', icon: ShieldAlert },
-  { role: 'ADMIN',       label: 'Admin',        color: '#2563eb', description: 'All access except deleting users and system config', icon: ShieldCheck },
-  { role: 'MANAGER',     label: 'Manager',      color: '#4f46e5', description: 'CRM, recruitment, team management', icon: Shield },
+  { role: 'ADMIN',       label: 'Admin',        color: '#2563eb', description: 'Everything except deleting users', icon: ShieldCheck },
+  { role: 'MANAGER',     label: 'Manager',      color: '#4f46e5', description: 'CRM, recruitment, interviews, leave approvals, reports', icon: Shield },
   { role: 'RECRUITER',   label: 'Recruiter',    color: '#059669', description: 'Candidates, jobs, interviews', icon: Users },
   { role: 'HR',          label: 'HR',           color: '#0d9488', description: 'Employees, attendance, leave, payroll view', icon: UserCheck },
-  { role: 'ACCOUNTANT',  label: 'Accountant',   color: '#d97706', description: 'Payroll, invoices, financial reports', icon: DollarSign },
+  { role: 'ACCOUNTANT',  label: 'Accountant',   color: '#d97706', description: 'Payroll, invoices, finance, reports', icon: DollarSign },
   { role: 'VIEWER',      label: 'Viewer',       color: '#6b7280', description: 'Read-only access to dashboard and listings', icon: Eye },
 ];
 
 export default function RolesPage() {
   const qc = useQueryClient();
+  // Creating, editing and deleting custom roles is SUPER_ADMIN-only on the server.
+  const canManage = useAuth(s => s.user?.role === 'SUPER_ADMIN');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing]   = useState<any>(null);
   const [viewing, setViewing]   = useState<string | null>(null);
@@ -372,10 +274,10 @@ export default function RolesPage() {
             <p className="text-xs text-gray-400">Define what each role can access</p>
           </div>
         </div>
-        <button onClick={() => { setEditing(null); setFormOpen(true); }}
+        {canManage && <button onClick={() => { setEditing(null); setFormOpen(true); }}
           className="flex items-center gap-2 px-4 py-2.5 bg-primary-400 text-white text-sm font-bold rounded-xl hover:bg-primary-500 transition-all shadow-sm shadow-primary-400/20">
           <Plus size={14} /> New Custom Role
-        </button>
+        </button>}
       </div>
 
       {/* Built-in roles */}
@@ -432,7 +334,7 @@ export default function RolesPage() {
             <Shield size={28} className="text-gray-200 mx-auto mb-3" />
             <p className="text-gray-500 font-semibold text-sm">No custom roles yet</p>
             <p className="text-gray-400 text-xs mt-1 mb-4">Create roles with fine-grained permission control</p>
-            <button onClick={() => setFormOpen(true)} className="text-primary-500 text-sm font-bold hover:underline">+ Create first custom role</button>
+            {canManage && <button onClick={() => setFormOpen(true)} className="text-primary-500 text-sm font-bold hover:underline">+ Create first custom role</button>}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -469,7 +371,7 @@ export default function RolesPage() {
 
                   <p className="text-xs text-gray-400 mb-3">{grantCount} permission{grantCount !== 1 ? 's' : ''} granted</p>
 
-                  <div className="flex items-center gap-2 border-t border-gray-100 pt-3">
+                  {canManage && <div className="flex items-center gap-2 border-t border-gray-100 pt-3">
                     <button onClick={() => { setEditing(r); setFormOpen(true); }}
                       className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
                       <Pencil size={11} /> Edit
@@ -478,7 +380,7 @@ export default function RolesPage() {
                       className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold text-red-500 hover:bg-red-50 rounded-lg transition-colors">
                       <Trash2 size={11} /> Delete
                     </button>
-                  </div>
+                  </div>}
                 </div>
               );
             })}

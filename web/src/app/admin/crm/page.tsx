@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
-import Modal from '@/components/admin/Modal';
+import ClientFormModal, { CLIENT_FORM_FIELDS } from '@/components/admin/crm/ClientFormModal';
 import toast from 'react-hot-toast';
 import {
   Building2, Search, Plus, Pencil, Trash2, Eye, Phone, Mail,
@@ -191,21 +191,6 @@ function ClientRow({ client, onEdit, onDelete, onView }: any) {
   );
 }
 
-const FIELDS = [
-  { name: 'companyName',   label: 'Company Name *', type: 'text',     required: true },
-  { name: 'contactPerson', label: 'Contact Person *', type: 'text',   required: true },
-  { name: 'email',         label: 'Email *',         type: 'email',   required: true },
-  { name: 'phone',         label: 'Phone *',         type: 'tel',     required: true },
-  { name: 'altPhone',      label: 'Alt Phone',       type: 'tel' },
-  { name: 'country',       label: 'Country',         type: 'text' },
-  { name: 'city',          label: 'City',            type: 'text' },
-  { name: 'address',       label: 'Address',         type: 'text' },
-  { name: 'website',       label: 'Website',         type: 'url' },
-  { name: 'notes',         label: 'Notes',           type: 'textarea' },
-];
-
-const SOURCE_OPTIONS = ['Website', 'Referral', 'Cold Call', 'LinkedIn', 'Event', 'Enquiry Form', 'Other'];
-const STANDARD_SOURCES = SOURCE_OPTIONS.filter(o => o !== 'Other');
 
 export default function ClientsPage() {
   const qc     = useQueryClient();
@@ -219,18 +204,15 @@ export default function ClientsPage() {
   const [editing,      setEditing]      = useState<any>(null);
   const [viewMode,     setViewMode]     = useState<'grid' | 'list'>('grid');
   const [importOpen,   setImportOpen]   = useState(false);
-  const [showOtherSource, setShowOtherSource] = useState(false);
   const { data: industries } = useIndustries();
 
   function openAdd() {
     setEditing(null);
-    setShowOtherSource(false);
     setModal(true);
   }
 
   function openEdit(cl: any) {
     setEditing(cl);
-    setShowOtherSource(!!cl.source && !STANDARD_SOURCES.includes(cl.source));
     setModal(true);
   }
 
@@ -269,15 +251,6 @@ export default function ClientsPage() {
     onError: (e: any) => toast.error(e.response?.data?.error || 'Error'),
   });
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const body: any = Object.fromEntries(fd.entries());
-    body.isActive = body.isActive !== 'false';
-    if (body.source === 'Other' && body.sourceOther) body.source = body.sourceOther;
-    delete body.sourceOther;
-    save.mutate(body);
-  }
 
   return (
     <div className="p-4 sm:p-6">
@@ -412,75 +385,20 @@ export default function ClientsPage() {
       )}
 
       {/* Modal */}
-      <Modal isOpen={modal} onClose={() => { setModal(false); setEditing(null); }}
-        title={editing ? 'Edit Client' : 'Add Client'}>
-        <form onSubmit={handleSubmit} className="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {FIELDS.map(f => (
-              <div key={f.name} className={f.type === 'textarea' ? 'sm:col-span-2' : ''}>
-                <label className="block text-xs font-bold text-gray-500 mb-1">{f.label}</label>
-                {f.type === 'textarea' ? (
-                  <textarea name={f.name} defaultValue={editing?.[f.name] || ''} rows={2}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30 resize-none" />
-                ) : (
-                  <input type={f.type} name={f.name} required={f.required} defaultValue={editing?.[f.name] || ''}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30" />
-                )}
-              </div>
-            ))}
-            <div>
-              <label className="block text-xs font-bold text-gray-500 mb-1">Industry</label>
-              <select name="industryId" defaultValue={editing?.industryId || ''}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30">
-                <option value="">Select…</option>
-                {(industries || []).map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-500 mb-1">Source</label>
-              <select name="source" defaultValue={
-                  editing?.source && STANDARD_SOURCES.includes(editing.source) ? editing.source
-                  : editing?.source ? 'Other' : ''
-                }
-                onChange={e => setShowOtherSource(e.target.value === 'Other')}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30">
-                <option value="">Select…</option>
-                {SOURCE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-              </select>
-              {showOtherSource && (
-                <input name="sourceOther" placeholder="Specify source"
-                  defaultValue={editing?.source && !STANDARD_SOURCES.includes(editing.source) ? editing.source : ''}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm mt-2 focus:outline-none focus:ring-2 focus:ring-primary-400/30" />
-              )}
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-500 mb-1">Status</label>
-              <select name="isActive" defaultValue={String(editing?.isActive ?? true)}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30">
-                <option value="true">Active</option>
-                <option value="false">Inactive</option>
-              </select>
-            </div>
-          </div>
-          <div className="flex gap-2 pt-2 sticky bottom-0 bg-white pb-1">
-            <button type="button" onClick={() => { setModal(false); setEditing(null); }}
-              className="flex-1 border border-gray-200 text-gray-600 font-semibold text-sm py-2.5 rounded-xl hover:bg-gray-50 transition-colors">
-              Cancel
-            </button>
-            <button type="submit" disabled={save.isPending}
-              className="flex-1 bg-primary-400 hover:bg-primary-500 text-white font-bold text-sm py-2.5 rounded-xl transition-colors disabled:opacity-60">
-              {save.isPending ? 'Saving…' : editing ? 'Update' : 'Add Client'}
-            </button>
-          </div>
-        </form>
-      </Modal>
+      <ClientFormModal
+        isOpen={modal}
+        onClose={() => { setModal(false); setEditing(null); }}
+        editing={editing}
+        saving={save.isPending}
+        onSubmit={body => save.mutate(body)}
+      />
 
       <ImportCSVModal
         isOpen={importOpen}
         onClose={() => setImportOpen(false)}
         title="Clients"
         endpoint="/clients"
-        fields={[...FIELDS.map(f => ({ key: f.name, label: f.label.replace(/\s*\*$/, ''), required: !!f.required })), { key: 'source', label: 'Source', required: false }]}
+        fields={[...CLIENT_FORM_FIELDS.map(f => ({ key: f.name, label: f.label.replace(/\s*\*$/, ''), required: !!f.required })), { key: 'source', label: 'Source', required: false }]}
         onDone={() => qc.invalidateQueries({ queryKey: ['clients'] })}
       />
     </div>

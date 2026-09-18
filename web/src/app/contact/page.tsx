@@ -1,6 +1,7 @@
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { MapPin, Phone, Mail } from 'lucide-react';
+import ContactForm from './ContactForm';
 
 export default function ContactPage() {
   return (
@@ -55,31 +56,7 @@ export default function ContactPage() {
               {/* Form */}
               <div className="card">
                 <h3 className="font-semibold text-gray-900 mb-5">Send Us a Message</h3>
-                <form className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="label">First Name</label>
-                      <input className="input" placeholder="John" />
-                    </div>
-                    <div>
-                      <label className="label">Last Name</label>
-                      <input className="input" placeholder="Doe" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="label">Email</label>
-                    <input type="email" className="input" placeholder="john@example.com" />
-                  </div>
-                  <div>
-                    <label className="label">Phone</label>
-                    <input className="input" placeholder="+971 50 XXX XXXX" />
-                  </div>
-                  <div>
-                    <label className="label">Message</label>
-                    <textarea rows={4} className="input resize-none" placeholder="How can we help you?" />
-                  </div>
-                  <button type="submit" className="btn-primary w-full justify-center py-3">Send Message →</button>
-                </form>
+                <ContactForm />
               </div>
             </div>
           </div>

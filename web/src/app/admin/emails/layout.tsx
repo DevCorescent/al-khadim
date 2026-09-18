@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ExternalLink } from 'lucide-react';
-import RequireRole from '@/components/admin/RequireRole';
+import RequirePermission from '@/components/admin/RequirePermission';
 
 const TABS = [
   { label: 'Compose',   href: '/admin/emails' },
@@ -16,7 +16,7 @@ export default function EmailsLayout({ children }: { children: React.ReactNode }
   const pathname = usePathname();
 
   return (
-    <RequireRole allow={['SUPER_ADMIN', 'ADMIN']}>
+    <RequirePermission module="emails">
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between border-b border-gray-200 mb-5">
           <nav className="flex gap-1 -mb-px">
@@ -41,6 +41,6 @@ export default function EmailsLayout({ children }: { children: React.ReactNode }
         </div>
         {children}
       </div>
-    </RequireRole>
+    </RequirePermission>
   );
 }

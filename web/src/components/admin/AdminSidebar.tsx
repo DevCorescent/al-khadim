@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   LayoutDashboard, Users, Briefcase, UserCheck, Calendar,
   Building2, FileText, BarChart3, Settings, LogOut,
@@ -10,10 +10,14 @@ import {
   Receipt, Landmark, PieChart, Bot,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
+import { canViewPath } from '@/lib/permissions';
 import { useRouter } from 'next/navigation';
 import { clsx } from 'clsx';
 
-const navItems = [
+type NavChild = { label: string; href: string; icon: typeof Users };
+type NavItem = { label: string; icon: typeof Users; href?: string; children?: NavChild[] };
+
+const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/admin', icon: LayoutDashboard },
   {
     label: 'CRM', icon: Building2, children: [
@@ -75,6 +79,22 @@ const navItems = [
 
 const INK = '#18181b'; // matte black — the single brand accent used across nav chrome
 
+/**
+ * Nav entries the current user may open. Visibility is derived from each href via
+ * `canViewPath` (route → permission module, see src/lib/permissions.ts); a group is
+ * shown when at least one of its children is.
+ */
+function useVisibleNav(): NavItem[] {
+  const user = useAuth(s => s.user);
+  return useMemo(() => navItems.flatMap<NavItem>(item => {
+    if (item.children) {
+      const children = item.children.filter(ch => canViewPath(user, ch.href));
+      return children.length ? [{ ...item, children }] : [];
+    }
+    return canViewPath(user, item.href!) ? [item] : [];
+  }), [user]);
+}
+
 interface SidebarProps {
   open?: boolean;
   onClose?: () => void;
@@ -86,12 +106,13 @@ export default function AdminSidebar({ open, onClose, collapsed, onToggleCollaps
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const router = useRouter();
+  const items = useVisibleNav();
   const [expanded, setExpanded] = useState<string[]>(['CRM', 'Finance', 'Recruitment', 'HRMS', 'Team', 'Settings']);
 
   const toggle = (label: string) =>
     setExpanded(prev => prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label]);
 
-  const handleLogout = () => { logout(); router.push('/login'); };
+  const handleLogout = async () => { await logout(); router.replace('/login'); };
   const handleNavClick = () => { onClose?.(); };
 
   const c = !!collapsed;
@@ -125,7 +146,7 @@ export default function AdminSidebar({ open, onClose, collapsed, onToggleCollaps
 
       {/* Nav */}
       <nav className={clsx('flex-1 space-y-0.5 overflow-y-auto pb-4 scrollbar-none', c ? 'px-2' : 'px-3')}>
-        {navItems.map(item => {
+        {items.map(item => {
           if (item.children) {
             const isOpen   = expanded.includes(item.label);
             const isActive = item.children.some(ch => pathname === ch.href || pathname.startsWith(ch.href + '/'));
@@ -285,10 +306,11 @@ export default function AdminSidebar({ open, onClose, collapsed, onToggleCollaps
 function MobileSidebarBody({ pathname, onClose }: { pathname: string; onClose?: () => void }) {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const items = useVisibleNav();
   const [expanded, setExpanded] = useState<string[]>(['CRM', 'Finance', 'Recruitment', 'HRMS', 'Team', 'Settings']);
   const toggle = (label: string) =>
     setExpanded(prev => prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label]);
-  const handleLogout = () => { logout(); router.push('/login'); };
+  const handleLogout = async () => { await logout(); router.replace('/login'); };
   const handleNavClick = () => { onClose?.(); };
 
   return (
@@ -310,7 +332,7 @@ function MobileSidebarBody({ pathname, onClose }: { pathname: string; onClose?: 
       </div>
       <div className="mx-4 mb-3 border-t border-gray-100" />
       <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto pb-4 scrollbar-none">
-        {navItems.map(item => {
+        {items.map(item => {
           if (item.children) {
             const isOpen   = expanded.includes(item.label);
             const isActive = item.children.some(ch => pathname === ch.href || pathname.startsWith(ch.href + '/'));

@@ -1,7 +1,8 @@
 'use client';
 import { usePathname } from 'next/navigation';
-import { Bell, Search, Menu, ChevronRight, Bot } from 'lucide-react';
+import { Menu, ChevronRight, Bot } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
+import { canViewPath } from '@/lib/permissions';
 import Link from 'next/link';
 import { useState } from 'react';
 import AssistantPanel from './ai/AssistantPanel';
@@ -9,20 +10,28 @@ import AssistantPanel from './ai/AssistantPanel';
 const breadcrumbs: Record<string, { label: string; parent?: string; parentHref?: string }> = {
   '/admin':                           { label: 'Dashboard' },
   '/admin/crm':                       { label: 'Clients',          parent: 'CRM' },
+  '/admin/crm/deals':                 { label: 'Deals',            parent: 'CRM' },
   '/admin/crm/follow-ups':            { label: 'Follow-Ups',       parent: 'CRM' },
   '/admin/crm/enquiries':             { label: 'Enquiries',        parent: 'CRM' },
-  '/admin/crm/invoices':              { label: 'Invoices',         parent: 'CRM' },
+  '/admin/crm/invoices':              { label: 'Invoices',         parent: 'Finance' },
+  '/admin/finance':                   { label: 'Overview',         parent: 'Finance' },
+  '/admin/finance/expenses':          { label: 'Expenses',         parent: 'Finance' },
+  '/admin/finance/accounts':          { label: 'Accounts',         parent: 'Finance' },
+  '/admin/finance/budgets':           { label: 'Budgets',          parent: 'Finance' },
   '/admin/candidates':                { label: 'Candidates',       parent: 'Recruitment' },
   '/admin/candidates/registrations':  { label: 'CV Registrations', parent: 'Recruitment' },
   '/admin/profile-requests':          { label: 'Profile Requests', parent: 'Recruitment' },
+  '/admin/profile-shares':            { label: 'Profile Shares',   parent: 'Recruitment' },
+  '/admin/candidate-tracking':        { label: 'Candidate Tracking', parent: 'Recruitment' },
   '/admin/jobs':                      { label: 'Job Orders',       parent: 'Recruitment' },
   '/admin/interviews':                { label: 'Interviews',       parent: 'Recruitment' },
   '/admin/employees':                 { label: 'Employees',        parent: 'HRMS' },
   '/admin/attendance':                { label: 'Attendance',       parent: 'HRMS' },
   '/admin/leave':                     { label: 'Leave',            parent: 'HRMS' },
-  '/admin/payroll':                   { label: 'Payroll' },
+  '/admin/payroll':                   { label: 'Payroll',          parent: 'Finance' },
   '/admin/outsourcing':               { label: 'Outsourcing' },
   '/admin/documents':                 { label: 'Documents' },
+  '/admin/emails':                    { label: 'Emails' },
   '/admin/reports':                   { label: 'Reports' },
   '/admin/users':                     { label: 'Users',            parent: 'Team' },
   '/admin/users/roles':               { label: 'Roles & Perms',   parent: 'Team' },
@@ -34,7 +43,7 @@ interface AdminHeaderProps { onMenuOpen?: () => void; }
 
 export default function AdminHeader({ onMenuOpen }: AdminHeaderProps) {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const user = useAuth(s => s.user);
   const [assistantOpen, setAssistantOpen] = useState(false);
 
   // Match longest known path
@@ -73,25 +82,11 @@ export default function AdminHeader({ onMenuOpen }: AdminHeaderProps) {
           </div>
         </div>
 
-        {/* Right: search + bell + avatar */}
+        {/* Right: assistant + avatar. (No global search or notifications yet — the
+            candidates page has its own search, and there is no notifications feed.) */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Search */}
-          <div className="relative hidden md:block">
-            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
-            <input
-              placeholder="Search…"
-              className="pl-8 pr-3 py-1.5 rounded-xl text-xs bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-300 focus:border-gray-400 w-40 transition-all placeholder-gray-400"
-            />
-          </div>
-
-          {/* Bell */}
-          <button className="relative w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 transition-colors">
-            <Bell size={15} className="text-gray-500"/>
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-white"/>
-          </button>
-
           {/* AI Assistant */}
-          <button onClick={() => setAssistantOpen(true)}
+          <button onClick={() => setAssistantOpen(true)} title="AI Assistant" aria-label="AI Assistant"
             className="relative w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 transition-colors">
             <Bot size={15} className="text-gray-500"/>
           </button>
@@ -100,16 +95,23 @@ export default function AdminHeader({ onMenuOpen }: AdminHeaderProps) {
           <div className="w-px h-5 bg-gray-200 mx-0.5"/>
 
           {/* Avatar + name */}
-          <Link href="/admin/settings" className="flex items-center gap-2 px-2 py-1 rounded-xl hover:bg-gray-50 transition-colors">
-            <div className="w-7 h-7 rounded-xl flex items-center justify-center text-white font-black text-[11px] shrink-0"
-              style={{background:'#18181b'}}>
-              {user?.name?.[0]?.toUpperCase()}
-            </div>
-            <div className="hidden sm:block">
-              <p className="text-xs font-bold text-gray-800 leading-tight">{user?.name?.split(' ')[0]}</p>
-              <p className="text-[9px] font-medium leading-tight" style={{color:'rgba(0,0,0,0.35)'}}>{user?.role}</p>
-            </div>
-          </Link>
+          {(() => {
+            const inner = (
+              <>
+                <div className="w-7 h-7 rounded-xl flex items-center justify-center text-white font-black text-[11px] shrink-0"
+                  style={{background:'#18181b'}}>
+                  {user?.name?.[0]?.toUpperCase()}
+                </div>
+                <div className="hidden sm:block">
+                  <p className="text-xs font-bold text-gray-800 leading-tight">{user?.name?.split(' ')[0]}</p>
+                  <p className="text-[9px] font-medium leading-tight" style={{color:'rgba(0,0,0,0.35)'}}>{user?.customRole || user?.role}</p>
+                </div>
+              </>
+            );
+            return canViewPath(user, '/admin/settings')
+              ? <Link href="/admin/settings" className="flex items-center gap-2 px-2 py-1 rounded-xl hover:bg-gray-50 transition-colors">{inner}</Link>
+              : <div className="flex items-center gap-2 px-2 py-1">{inner}</div>;
+          })()}
         </div>
       </div>
 

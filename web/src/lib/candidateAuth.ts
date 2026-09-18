@@ -1,8 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import axios from 'axios';
-
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001';
+import axios, { type AxiosInstance } from 'axios';
+import { API_BASE as API, createPortalClient } from './portalApi';
 
 export interface CandidateProfile {
   id: string;
@@ -74,23 +73,18 @@ export const useCandidateAuth = create<CandidateAuthState>()(
       },
 
       logout: async () => {
-        const { accessToken } = get();
+        const { accessToken, refreshToken } = get();
         try {
-          if (accessToken) {
-            await axios.post(`${API}/api/candidate-auth/logout`, {}, {
-              headers: { Authorization: `Bearer ${accessToken}` },
-            });
-          }
+          // Revoke the refresh token server-side (best effort). Goes through the portal
+          // client so an expired access token is refreshed first.
+          if (accessToken) await portalClient().post('/api/candidate-auth/logout', { refreshToken }, { timeout: 5000 });
         } catch {}
         set({ candidate: null, accessToken: null, refreshToken: null, isAuthenticated: false });
       },
 
       refreshProfile: async () => {
-        const { accessToken } = get();
-        if (!accessToken) return;
-        const { data } = await axios.get(`${API}/api/candidate-auth/me`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
+        if (!get().accessToken) return;
+        const { data } = await portalClient().get('/api/candidate-auth/me');
         set(s => ({ candidate: { ...s.candidate, ...data } }));
       },
     }),
@@ -107,10 +101,27 @@ export const useCandidateAuth = create<CandidateAuthState>()(
   )
 );
 
-/* Axios instance pre-configured with candidate auth */
-export function candidateApi(accessToken: string) {
-  return axios.create({
-    baseURL: API,
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+/* Shared axios instance for the candidate session: attaches the current access
+   token and refreshes it on 401 (redirecting to /candidate/login if that fails). */
+let _client: AxiosInstance | null = null;
+function portalClient(): AxiosInstance {
+  if (!_client) {
+    _client = createPortalClient({
+      refreshPath: '/api/candidate-auth/refresh',
+      loginPath: '/candidate/login',
+      getTokens: () => useCandidateAuth.getState(),
+      setTokens: (accessToken, refreshToken) => useCandidateAuth.setState({ accessToken, refreshToken }),
+      clearSession: () => useCandidateAuth.setState({ candidate: null, accessToken: null, refreshToken: null, isAuthenticated: false }),
+    });
+  }
+  return _client;
+}
+
+/**
+ * Axios instance with candidate auth. The argument is kept for existing call sites;
+ * the instance always uses the latest token from the store.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function candidateApi(_accessToken?: string | null): AxiosInstance {
+  return portalClient();
 }

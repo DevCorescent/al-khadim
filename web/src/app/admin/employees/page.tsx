@@ -47,6 +47,7 @@ export default function EmployeesPage() {
   const del = useMutation({
     mutationFn: (id: string) => api.delete(`/employees/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['employees'] }); toast.success('Deleted'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to delete employee'),
   });
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {

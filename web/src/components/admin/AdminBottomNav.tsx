@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, Users, Briefcase, Building2, Menu } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useAuth } from '@/lib/auth';
+import { canViewPath } from '@/lib/permissions';
 
 const QUICK_ACTIONS = [
   { href: '/admin',            icon: LayoutDashboard, label: 'Dashboard' },
@@ -15,11 +17,13 @@ interface AdminBottomNavProps { onMore?: () => void; }
 
 export default function AdminBottomNav({ onMore }: AdminBottomNavProps) {
   const pathname = usePathname();
+  const user = useAuth(s => s.user);
+  const actions = QUICK_ACTIONS.filter(a => canViewPath(user, a.href));
 
   return (
     <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 flex"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-      {QUICK_ACTIONS.map(({ href, icon: Icon, label }) => {
+      {actions.map(({ href, icon: Icon, label }) => {
         const active = href === '/admin' ? pathname === '/admin' : pathname.startsWith(href);
         return (
           <Link key={href} href={href}

@@ -1,4 +1,5 @@
 'use client';
+import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -9,6 +10,7 @@ import {
   Mail, CheckCircle2, AlertCircle,
 } from 'lucide-react';
 import { buildPrintHTML } from '../_components/printEngine';
+import MarkPaidModal from '../_components/MarkPaidModal';
 
 const STATUS_COLORS: Record<string,string> = {
   DRAFT:'bg-gray-100 text-gray-500', SENT:'bg-blue-100 text-blue-700',
@@ -47,19 +49,31 @@ export default function InvoiceViewPage() {
     setTimeout(() => { win.focus(); win.print(); }, 600);
   }
 
+  const [payOpen, setPayOpen] = useState(false);
+
   const del = useMutation({
     mutationFn: () => api.delete(`/invoices/${id}`),
     onSuccess: () => { toast.success('Deleted'); router.push('/admin/crm/invoices'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to delete'),
   });
 
   const updateStatus = useMutation({
-    mutationFn: (status: string) => api.put(`/invoices/${id}`, { status }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoice', id] }); toast.success('Status updated'); },
+    mutationFn: ({ status, accountId }: { status: string; accountId?: string }) =>
+      api.put(`/invoices/${id}`, accountId ? { status, accountId } : { status }),
+    onSuccess: (_r, vars) => {
+      qc.invalidateQueries({ queryKey: ['invoice', id] });
+      qc.invalidateQueries({ queryKey: ['invoices'] });
+      if (vars.accountId) qc.invalidateQueries({ queryKey: ['bank-accounts'] });
+      toast.success(vars.status === 'PAID' ? (vars.accountId ? 'Marked paid and recorded in Accounts' : 'Marked paid') : 'Status updated');
+      setPayOpen(false);
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to update status'),
   });
 
   const duplicate = useMutation({
     mutationFn: () => api.post(`/invoices/${id}/duplicate`).then(r => r.data),
     onSuccess: (d: any) => { router.push(`/admin/crm/invoices/${d.id}/edit`); toast.success('Duplicated'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to duplicate'),
   });
 
   if (isLoading) return (
@@ -95,13 +109,13 @@ export default function InvoiceViewPage() {
         <div className="flex items-center gap-2">
           {/* Quick status actions */}
           {doc.status === 'DRAFT' && (
-            <button onClick={() => updateStatus.mutate('SENT')}
+            <button onClick={() => updateStatus.mutate({ status: 'SENT' })}
               className="flex items-center gap-1.5 text-xs font-bold text-blue-600 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-xl hover:bg-blue-100 transition-colors">
               <Mail size={12}/> Mark Sent
             </button>
           )}
           {['SENT','OVERDUE'].includes(doc.status) && (
-            <button onClick={() => updateStatus.mutate('PAID')}
+            <button onClick={() => setPayOpen(true)}
               className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl hover:bg-emerald-100 transition-colors">
               <CheckCircle2 size={12}/> Mark Paid
             </button>
@@ -303,6 +317,12 @@ export default function InvoiceViewPage() {
           </div>
         )}
       </div>
+      <MarkPaidModal
+        invoice={payOpen ? doc : null}
+        onClose={() => setPayOpen(false)}
+        saving={updateStatus.isPending}
+        onConfirm={accountId => updateStatus.mutate({ status: 'PAID', accountId })}
+      />
     </div>
   );
 }
