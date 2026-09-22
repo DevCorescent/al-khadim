@@ -8,7 +8,7 @@ import { Lock, ClipboardList, FileText, Download } from 'lucide-react';
 import ProfileShareView from '@/components/company/ProfileShareView';
 import IndustryTrackingTabs from '@/components/IndustryTrackingTabs';
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001';
+const API = process.env.NEXT_PUBLIC_API_URL || '';
 
 export default function PublicShareViewPage() {
   const { token } = useParams<{ token: string }>();

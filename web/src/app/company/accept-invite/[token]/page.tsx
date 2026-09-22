@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { useClientAuth } from '@/lib/clientAuth';
 import { Lock, ArrowRight, Building2 } from 'lucide-react';
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001';
+const API = process.env.NEXT_PUBLIC_API_URL || '';
 
 export default function AcceptInvitePage() {
   const { token } = useParams<{ token: string }>();

@@ -8,7 +8,7 @@ import Footer from '@/components/Footer';
 import toast from 'react-hot-toast';
 import { Upload, CheckCircle, Briefcase } from 'lucide-react';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 /**
  * `?job=<id>&jobTitle=<title>` comes from the careers "Apply Now" button. The public registration

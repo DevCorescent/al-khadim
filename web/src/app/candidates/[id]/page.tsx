@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useClientAuth } from '@/lib/clientAuth';
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001';
+const API = process.env.NEXT_PUBLIC_API_URL || '';
 
 const SKILL_COLORS = [
   'bg-violet-50 text-violet-700 border-violet-200',

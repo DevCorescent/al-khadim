@@ -8,7 +8,7 @@ import Footer from '@/components/Footer';
 import { MapPin, Briefcase, DollarSign, Search, X } from 'lucide-react';
 import Link from 'next/link';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 function CareersContent() {
   const searchParams = useSearchParams();

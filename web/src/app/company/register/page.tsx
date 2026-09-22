@@ -9,7 +9,7 @@ import { Building2, ArrowRight, ArrowLeft, CheckCircle, ShieldCheck } from 'luci
 import OtpVerifyStep from '@/components/OtpVerifyStep';
 import { useIndustries } from '@/lib/taxonomy';
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001';
+const API = process.env.NEXT_PUBLIC_API_URL || '';
 
 const STEPS = ['Company Details', 'Verify Email', 'Set Password', 'Done'];
 

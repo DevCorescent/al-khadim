@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import Link from 'next/link';
 import { Building2, Mail, Phone, Briefcase, MessageSquare, ChevronDown, ChevronUp, CheckCircle, XCircle, Clock, Eye, ExternalLink } from 'lucide-react';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 const STATUS_STYLES: Record<string, string> = {
   NEW:        'bg-blue-50 text-blue-700 border-blue-200',
