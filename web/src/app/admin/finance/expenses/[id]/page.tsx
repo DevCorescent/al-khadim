@@ -12,7 +12,7 @@ import { useSettings } from '@/lib/useSettings';
 import Modal from '@/components/admin/Modal';
 import { CATEGORY_LABELS, STATUS_COLORS, STATUS_LABELS } from '../_components/constants';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 export default function ExpenseDetailPage() {
   const { id } = useParams<{ id: string }>();

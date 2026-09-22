@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 import { Upload, CheckCircle, AlertCircle, ArrowRight, ArrowLeft, User, FileText, Plus, X, Loader2, ShieldCheck } from 'lucide-react';
 import OtpVerifyStep from '@/components/OtpVerifyStep';
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001';
+const API = process.env.NEXT_PUBLIC_API_URL || '';
 
 const STEPS = ['Upload CV', 'Review & Edit', 'Verify Email', 'Set Password', 'Done'];
 

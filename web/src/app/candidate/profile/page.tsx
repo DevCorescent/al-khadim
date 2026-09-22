@@ -7,7 +7,7 @@ import { Camera, Upload, Plus, X, Save, Eye, EyeOff, Lock, Loader2, PlayCircle, 
 import YouTubeEmbed from '@/components/YouTubeEmbed';
 import { isValidYouTubeUrl } from '@/lib/youtube';
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001';
+const API = process.env.NEXT_PUBLIC_API_URL || '';
 
 export default function CandidateProfilePage() {
   const { candidate, accessToken, refreshProfile } = useCandidateAuth();

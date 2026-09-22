@@ -17,7 +17,7 @@ import { isValidYouTubeUrl } from '@/lib/youtube';
 import CandidateTrackingPanel from '@/components/admin/CandidateTrackingPanel';
 import { useCategories, useIndustries } from '@/lib/taxonomy';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 const STATUS_COLORS: Record<string, string> = {
   NEW: 'bg-blue-100 text-blue-700',

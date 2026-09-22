@@ -7,7 +7,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { MessageCircle, X, Send, Bot, Maximize2, Minimize2 } from 'lucide-react';
 import ChatMarkdown from '@/components/ChatMarkdown';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 const STORAGE_KEY = 'ak-public-chat-session';
 
 const GREETING =

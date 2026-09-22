@@ -6,7 +6,7 @@ import Footer from '@/components/Footer';
 import toast from 'react-hot-toast';
 import { CheckCircle } from 'lucide-react';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 const services = ['Placement Services', 'Recruitment Services', 'Contractual Outsourcing', 'Management Consultancy', 'Permanent Residency', 'Other'];
 
 export default function EnquiryPage() {

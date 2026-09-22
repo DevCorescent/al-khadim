@@ -11,7 +11,9 @@ const nextConfig = {
   },
   env: {
     // The backend now lives in this app (src/app/api), so the API origin is the app itself.
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000',
+    // Empty = same origin (requests go to relative /api/...), which works on any domain.
+    // This value is inlined into the browser bundle at build time, so never default it to localhost.
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || '',
   },
   experimental: {
     // Runs src/instrumentation.ts on server start (starts the email scheduler).

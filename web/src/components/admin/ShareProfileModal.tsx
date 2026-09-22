@@ -7,7 +7,7 @@ import Modal from './Modal';
 import { SHAREABLE_FIELD_GROUPS } from '@/lib/shareableFields';
 import { FileText, Mail, Globe, Send, AlertTriangle, Eye, EyeOff } from 'lucide-react';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 interface Props {
   isOpen: boolean;
