@@ -150,7 +150,8 @@ export default function DealsBoardPage() {
 
   const { data: users } = useQuery({
     queryKey: ['users'],
-    queryFn: () => api.get('/users').then(r => r.data),
+    // Optional owner list: roles without users:view just get no owners, not a "no permission" toast.
+    queryFn: () => api.get('/users', { forbiddenToast: false }).then(r => r.data),
     retry: false,
   });
 
@@ -324,7 +325,8 @@ function NewDealModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => voi
   });
   const { data: users } = useQuery({
     queryKey: ['users'],
-    queryFn: () => api.get('/users').then(r => r.data),
+    // Optional owner list: roles without users:view just get no owners, not a "no permission" toast.
+    queryFn: () => api.get('/users', { forbiddenToast: false }).then(r => r.data),
     enabled: isOpen,
     retry: false,
   });

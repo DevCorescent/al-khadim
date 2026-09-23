@@ -34,7 +34,8 @@ export default function DocumentsPage() {
   });
   const { data: employees } = useQuery({
     queryKey: ['employees-list'],
-    queryFn: () => api.get('/employees?limit=200').then(r => r.data.data),
+    // Optional employee picker: roles without employees:view get an empty list, not a "no permission" toast.
+    queryFn: () => api.get('/employees?limit=200', { forbiddenToast: false }).then(r => r.data.data),
   });
 
   const upload = useMutation({
