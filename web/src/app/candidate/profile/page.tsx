@@ -22,6 +22,12 @@ export default function CandidateProfilePage() {
     enabled: !!accessToken,
   });
 
+  const { data: history, isLoading: historyLoading } = useQuery({
+    queryKey: ['candidate-edit-history'],
+    queryFn: () => api.get('/api/candidate-auth/me/edit-history').then(r => r.data),
+    enabled: !!accessToken,
+  });
+
   const [form, setForm] = useState<any>({});
   const [skillInput, setSkillInput]   = useState('');
   const [langInput, setLangInput]     = useState('');
@@ -318,7 +324,21 @@ export default function CandidateProfilePage() {
           <button type="submit" disabled={pwMutation.isPending} className="btn-primary text-sm py-2.5 disabled:opacity-60">
             {pwMutation.isPending ? 'Updating…' : <><Lock size={13} /> Update Password</>}
           </button>
+          <p className="text-[11px] text-gray-400">Changing your password signs out your other devices.</p>
         </form>
+      </Section>
+
+      {/* Change log — the same audit trail admin sees, scoped to this candidate */}
+      <Section title="Profile Change History">
+        {historyLoading ? (
+          <p className="text-xs text-gray-400">Loading…</p>
+        ) : (history || []).length === 0 ? (
+          <p className="text-xs text-gray-400">No changes recorded yet. Edits you or Al Khadim make will appear here.</p>
+        ) : (
+          <div className="space-y-2">
+            {history.map((h: any) => <HistoryRow key={h.id} entry={h} />)}
+          </div>
+        )}
       </Section>
 
       {/* Save button (bottom) */}
@@ -353,6 +373,67 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div>
       <label className="label">{label}</label>
       {children}
+    </div>
+  );
+}
+
+const HISTORY_LABELS: Record<string, string> = {
+  firstName: 'First name', lastName: 'Last name', email: 'Email', phone: 'Phone',
+  headline: 'Headline', summary: 'Summary', nationality: 'Nationality',
+  currentLocation: 'Location', visaStatus: 'Visa status', experience: 'Experience',
+  skills: 'Skills', languages: 'Languages', education: 'Education',
+  linkedIn: 'LinkedIn', portfolio: 'Portfolio', introVideoUrl: 'Intro video',
+  isPublic: 'Public profile', status: 'Status', cvPath: 'CV', photo: 'Photo',
+  currentSalary: 'Current salary', expectedSalary: 'Expected salary', currency: 'Currency',
+};
+
+function historyValue(v: any): string {
+  if (v === null || v === undefined || v === '') return '—';
+  if (Array.isArray(v)) return v.join(', ') || '—';
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+  return String(v);
+}
+
+/** One entry in the candidate's own change log, collapsed to a summary by default. */
+function HistoryRow({ entry }: { entry: any }) {
+  const [open, setOpen] = useState(false);
+  const changes: Record<string, { old: any; new: any }> = entry.changes || {};
+  const fields = Object.keys(changes);
+  // editedBy is "candidate" | "admin" | "system" (schema.prisma).
+  const actor = entry.editedBy === 'admin'
+    ? { label: 'Al Khadim', tone: 'bg-blue-100 text-blue-600' }
+    : entry.editedBy === 'system'
+      ? { label: 'System', tone: 'bg-gray-100 text-gray-500' }
+      : { label: 'You', tone: 'bg-purple-100 text-purple-600' };
+
+  return (
+    <div className="border border-gray-100 rounded-xl overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-2.5 p-3 text-left hover:bg-gray-50 transition-colors"
+      >
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${actor.tone}`}>
+          {actor.label}
+        </span>
+        <span className="flex-1 min-w-0 text-xs text-gray-700 truncate">
+          updated {fields.map(f => HISTORY_LABELS[f] || f).join(', ') || 'your profile'}
+        </span>
+        <span className="text-[10px] text-gray-400 shrink-0">
+          {new Date(entry.createdAt).toLocaleDateString('en-AE', { day: 'numeric', month: 'short', year: 'numeric' })}
+        </span>
+      </button>
+
+      {open && fields.length > 0 && (
+        <div className="border-t border-gray-100 divide-y divide-gray-50">
+          {fields.map(f => (
+            <div key={f} className="px-3 py-2 grid grid-cols-3 gap-2 text-[11px] items-start">
+              <p className="font-semibold text-gray-500">{HISTORY_LABELS[f] || f}</p>
+              <p className="text-red-400 line-through break-words">{historyValue(changes[f].old)}</p>
+              <p className="text-emerald-600 font-medium break-words">{historyValue(changes[f].new)}</p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

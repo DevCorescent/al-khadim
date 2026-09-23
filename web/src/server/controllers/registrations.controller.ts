@@ -1,10 +1,11 @@
 // Ported from api/src/routes/registrations.js
 import crypto from 'crypto';
+import { unlink } from 'fs/promises';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { requirePermission } from '../permissions';
 import { HttpError, body, handler, json, query } from '../http';
-import { parseUpload } from '../upload';
+import { absoluteUploadPath, parseUpload } from '../upload';
 import { generateCvId } from '../utils/cvId';
 import { sendMail } from '../utils/mailer';
 import { sendTemplatedMail } from '../utils/templateRenderer';
@@ -220,4 +221,67 @@ export const convert = handler<{ id: string }>(async (req, { params }) => {
   await requirePermission(req, 'candidates', 'create');
   const b = await body(req);
   return json(await approveRegistration(params.id, b.isPublic));
+});
+
+/**
+ * Delete a registration outright (spam, duplicates, withdrawn applications).
+ * Approve/reject only change `status`, so without this the row is permanent.
+ *
+ * An approved registration is kept by default: it is the audit record of how a
+ * live candidate entered the system, and `convertedTo` points at them. Pass
+ * `?force=1` to delete it anyway, which leaves the candidate untouched.
+ *
+ * Uploaded files are removed only when nothing else references them — approval
+ * copies `cvPath`/`photo` onto the Candidate rather than duplicating the file,
+ * so unlinking blindly would blank a live candidate's CV.
+ */
+export const remove = handler<{ id: string }>(async (req, { params }) => {
+  await requirePermission(req, 'candidates', 'delete');
+
+  const reg = await prisma.candidateRegistration.findUnique({
+    where: { id: params.id },
+    select: { id: true, email: true, status: true, convertedTo: true, cvPath: true, photo: true },
+  });
+  if (!reg) return json({ error: 'Registration not found' }, 404);
+
+  const force = ['1', 'true'].includes(String(query(req).force ?? ''));
+  if (reg.status === 'APPROVED' && !force) {
+    return json(
+      {
+        error:
+          'This registration has been approved and is the audit record for a live candidate. ' +
+          'Delete the candidate instead, or repeat with ?force=1 to remove only this record.',
+        candidateId: reg.convertedTo,
+      },
+      409,
+    );
+  }
+
+  const candidates = reg.cvPath || reg.photo
+    ? await prisma.candidate.findMany({
+        where: {
+          OR: [
+            ...(reg.cvPath ? [{ cvPath: reg.cvPath }] : []),
+            ...(reg.photo ? [{ photo: reg.photo }] : []),
+          ],
+        },
+        select: { cvPath: true, photo: true },
+      })
+    : [];
+  const stillUsed = new Set(candidates.flatMap((c) => [c.cvPath, c.photo]).filter(Boolean) as string[]);
+
+  await prisma.candidateRegistration.delete({ where: { id: reg.id } });
+
+  const removedFiles: string[] = [];
+  for (const p of [reg.cvPath, reg.photo]) {
+    if (!p || stillUsed.has(p)) continue;
+    try {
+      await unlink(absoluteUploadPath(p));
+      removedFiles.push(p);
+    } catch {
+      /* already gone from disk */
+    }
+  }
+
+  return json({ message: 'Registration deleted', removedFiles });
 });

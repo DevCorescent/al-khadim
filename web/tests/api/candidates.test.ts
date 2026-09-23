@@ -200,6 +200,19 @@ describe('candidates', () => {
     assert.ok(!('email' in res.data.data[0]));
     const bad = await api('GET', '/candidates/public-profiles?limit=abc&page=-1');
     expectStatus(bad, 200);
+
+    // A candidate with isPublic=false must drop out of the listing. This
+    // assertion used to live on /candidate-auth/public-profiles, which was a
+    // dead duplicate of this route and has been removed.
+    const off = await api('PATCH', `/candidates/${mainId}/visibility`, { isPublic: false }, { token });
+    expectStatus(off, 200);
+    const hidden = await api('GET', `/candidates/public-profiles?search=${encodeURIComponent(`Main ${TAG}`)}`);
+    expectStatus(hidden, 200);
+    assert.ok(
+      !hidden.data.data.some((p: any) => p.id === mainId),
+      'isPublic=false profile is hidden from the public listing',
+    );
+    expectStatus(await api('PATCH', `/candidates/${mainId}/visibility`, { isPublic: true }, { token }), 200);
   });
 
   /* ── profile requests ── */

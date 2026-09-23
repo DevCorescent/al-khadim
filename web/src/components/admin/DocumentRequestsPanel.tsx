@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import {
   FileText, Plus, Download, CheckCircle2, XCircle, Clock, Users2, Trash2,
 } from 'lucide-react';
+import { saveResponseAsFile } from '@/lib/fileDownload';
 
 const STATUS_STYLE: Record<string, { label: string; color: string; icon: any }> = {
   REQUESTED: { label: 'Awaiting Upload', color: 'bg-amber-100 text-amber-700', icon: Clock },
@@ -64,13 +65,9 @@ export default function DocumentRequestsPanel({ candidateId, trackingId }: { can
   });
 
   function download(id: string, title: string) {
-    api.get(`/document-requests/${id}/download`, { responseType: 'blob' }).then((res) => {
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const a = document.createElement('a');
-      a.href = url; a.download = title;
-      document.body.appendChild(a); a.click(); a.remove();
-      window.URL.revokeObjectURL(url);
-    }).catch(() => toast.error('Failed to download'));
+    api.get(`/document-requests/${id}/download`, { responseType: 'blob' })
+      .then((res) => saveResponseAsFile(res, title))
+      .catch(() => toast.error('Failed to download'));
   }
 
   return (

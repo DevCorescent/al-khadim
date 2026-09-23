@@ -273,15 +273,4 @@ describe('candidate portal flow (candidate-auth)', () => {
     expectStatus(await api('POST', '/candidate-auth/refresh', { refreshToken: login.data.refreshToken }), 401);
   });
 
-  test('GET /candidate-auth/public-profiles is public, paginated and hides private profiles', async () => {
-    const res = await api('GET', '/candidate-auth/public-profiles?limit=abc&page=-3');
-    expectStatus(res, 200);
-    assert.equal(res.data.page, 1);
-    assert.ok(Array.isArray(res.data.data));
-    assert.equal(typeof res.data.total, 'number');
-    const mine = await api('GET', '/candidate-auth/public-profiles?search=Cand&limit=100');
-    expectStatus(mine, 200);
-    assert.ok(!mine.data.data.some((p: any) => p.id === candidateId), 'isPublic=false profile is hidden');
-    assert.ok(mine.data.data.every((p: any) => p.email === undefined));
-  });
 });

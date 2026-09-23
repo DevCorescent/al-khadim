@@ -4,8 +4,14 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import { Upload, CheckCircle, AlertCircle, ArrowRight, ArrowLeft, User, FileText, Plus, X, Loader2, ShieldCheck } from 'lucide-react';
+import { Upload, CheckCircle, AlertCircle, ArrowRight, ArrowLeft, User, FileText, Loader2, ShieldCheck, Languages as LanguagesIcon, Wrench } from 'lucide-react';
 import OtpVerifyStep from '@/components/OtpVerifyStep';
+import SearchSelect from '@/components/ui/SearchSelect';
+import PhoneField from '@/components/ui/PhoneField';
+import TagPicker from '@/components/ui/TagPicker';
+import {
+  EXPERIENCE_OPTIONS, LANGUAGE_OPTIONS, LOCATIONS, NATIONALITIES, SKILL_OPTIONS,
+} from '@/lib/formOptions';
 
 const API = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -49,37 +55,11 @@ export default function CandidateRegisterPage() {
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm]           = useState<FormState>(INITIAL_FORM);
   const [parsedRaw, setParsedRaw] = useState<ParsedCV | null>(null);
-  const [skillInput, setSkillInput] = useState('');
-  const [langInput, setLangInput]   = useState('');
   const [ticket, setTicket]         = useState<string | null>(null);
   const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null);
 
   function setField(field: keyof FormState, value: FormState[keyof FormState]) {
     setForm(prev => ({ ...prev, [field]: value }));
-  }
-
-  function addSkill(raw: string) {
-    const t = raw.trim();
-    if (t && !form.skills?.includes(t)) {
-      setField('skills', [...(form.skills || []), t]);
-    }
-    setSkillInput('');
-  }
-
-  function removeSkill(s: string) {
-    setField('skills', (form.skills || []).filter(x => x !== s));
-  }
-
-  function addLang(raw: string) {
-    const t = raw.trim();
-    if (t && !form.languages?.includes(t)) {
-      setField('languages', [...(form.languages || []), t]);
-    }
-    setLangInput('');
-  }
-
-  function removeLang(l: string) {
-    setField('languages', (form.languages || []).filter(x => x !== l));
   }
 
   async function handleCVUpload(file: File) {
@@ -292,47 +272,67 @@ export default function CandidateRegisterPage() {
                 <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
                   <User size={14} /> Personal Info
                 </h3>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="label">First Name *</label>
-                    <input className="input" value={form.firstName} onChange={e => setField('firstName', e.target.value)} placeholder="First name" />
+                    <label className="label" htmlFor="firstName">First Name *</label>
+                    <input id="firstName" className="input" value={form.firstName} onChange={e => setField('firstName', e.target.value)} placeholder="First name" />
                   </div>
                   <div>
-                    <label className="label">Last Name *</label>
-                    <input className="input" value={form.lastName} onChange={e => setField('lastName', e.target.value)} placeholder="Last name" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="label">Email *</label>
-                    <input className="input" type="email" value={form.email} onChange={e => setField('email', e.target.value)} placeholder="you@email.com" />
-                  </div>
-                  <div>
-                    <label className="label">Phone *</label>
-                    <input className="input" value={form.phone} onChange={e => setField('phone', e.target.value)} placeholder="+971 50 123 4567" />
+                    <label className="label" htmlFor="lastName">Last Name *</label>
+                    <input id="lastName" className="input" value={form.lastName} onChange={e => setField('lastName', e.target.value)} placeholder="Last name" />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="label">Nationality</label>
-                    <input className="input" value={form.nationality} onChange={e => setField('nationality', e.target.value)} placeholder="e.g. Indian" />
+                    <label className="label" htmlFor="email">Email *</label>
+                    <input id="email" className="input" type="email" value={form.email} onChange={e => setField('email', e.target.value)} placeholder="you@email.com" />
                   </div>
                   <div>
-                    <label className="label">Current Location</label>
-                    <input className="input" value={form.currentLocation} onChange={e => setField('currentLocation', e.target.value)} placeholder="e.g. Dubai, UAE" />
+                    <label className="label" htmlFor="phone">Phone *</label>
+                    <PhoneField id="phone" value={form.phone} onChange={v => setField('phone', v)} />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="label">Years of Experience</label>
-                    <input className="input" type="number" min="0" max="50"
-                      value={form.experience ?? ''}
-                      onChange={e => setField('experience', e.target.value ? parseInt(e.target.value) : undefined)}
-                      placeholder="0" />
+                    <label className="label" htmlFor="nationality">Nationality</label>
+                    <SearchSelect
+                      id="nationality"
+                      value={form.nationality || ''}
+                      onChange={v => setField('nationality', v)}
+                      options={NATIONALITIES}
+                      placeholder="Select nationality"
+                      searchPlaceholder="Search nationality…"
+                      allowCustom
+                    />
                   </div>
                   <div>
-                    <label className="label">LinkedIn URL</label>
-                    <input className="input" value={form.linkedIn} onChange={e => setField('linkedIn', e.target.value)} placeholder="linkedin.com/in/…" />
+                    <label className="label" htmlFor="currentLocation">Current Location</label>
+                    <SearchSelect
+                      id="currentLocation"
+                      value={form.currentLocation || ''}
+                      onChange={v => setField('currentLocation', v)}
+                      options={LOCATIONS.map(l => ({ value: l.value, icon: l.icon, priority: l.priority }))}
+                      placeholder="Select city"
+                      searchPlaceholder="Search city or type your own…"
+                      allowCustom
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="label" htmlFor="experience">Years of Experience</label>
+                    <SearchSelect
+                      id="experience"
+                      value={form.experience !== undefined ? String(form.experience) : ''}
+                      onChange={v => setField('experience', v ? parseInt(v, 10) : undefined)}
+                      options={EXPERIENCE_OPTIONS}
+                      placeholder="Select experience"
+                      searchPlaceholder="Search…"
+                    />
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="linkedIn">LinkedIn URL</label>
+                    <input id="linkedIn" className="input" value={form.linkedIn} onChange={e => setField('linkedIn', e.target.value)} placeholder="linkedin.com/in/…" />
                   </div>
                 </div>
               </div>
@@ -355,48 +355,42 @@ export default function CandidateRegisterPage() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
-                <h3 className="text-sm font-bold text-gray-700">Skills</h3>
-                <div className="flex flex-wrap gap-2">
-                  {(form.skills || []).map(s => (
-                    <span key={s} className="flex items-center gap-1 bg-primary-50 border border-primary-100 text-primary-700 text-xs font-semibold px-2.5 py-1 rounded-full">
-                      {s}
-                      <button type="button" onClick={() => removeSkill(s)} className="hover:text-red-500">
-                        <X size={10} />
-                      </button>
-                    </span>
-                  ))}
+              <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3">
+                <div className="flex items-baseline justify-between gap-2">
+                  <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                    <Wrench size={14} /> Skills
+                  </h3>
+                  <span className="text-[11px] text-gray-400">Search the list or type your own</span>
                 </div>
-                <div className="flex gap-2">
-                  <input className="input flex-1 text-sm" value={skillInput} onChange={e => setSkillInput(e.target.value)}
-                    placeholder="Add a skill (e.g. React, Python, SAP)"
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSkill(skillInput); } }} />
-                  <button type="button" onClick={() => addSkill(skillInput)} className="btn-outline text-xs px-3 py-2">
-                    <Plus size={14} />
-                  </button>
-                </div>
+                <TagPicker
+                  id="skills"
+                  value={form.skills || []}
+                  onChange={v => setField('skills', v)}
+                  options={SKILL_OPTIONS}
+                  placeholder="e.g. React, SAP, AutoCAD, Nursing…"
+                  quickPicks={['Advanced Excel', 'Project Management', 'Customer Service', 'AutoCAD', 'SAP']}
+                  tone="primary"
+                  max={30}
+                />
               </div>
 
-              <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
-                <h3 className="text-sm font-bold text-gray-700">Languages</h3>
-                <div className="flex flex-wrap gap-2">
-                  {(form.languages || []).map(l => (
-                    <span key={l} className="flex items-center gap-1 bg-gray-50 border border-gray-200 text-gray-700 text-xs font-semibold px-2.5 py-1 rounded-full">
-                      {l}
-                      <button type="button" onClick={() => removeLang(l)} className="hover:text-red-500">
-                        <X size={10} />
-                      </button>
-                    </span>
-                  ))}
+              <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3">
+                <div className="flex items-baseline justify-between gap-2">
+                  <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                    <LanguagesIcon size={14} /> Languages
+                  </h3>
+                  <span className="text-[11px] text-gray-400">Search the list or type your own</span>
                 </div>
-                <div className="flex gap-2">
-                  <input className="input flex-1 text-sm" value={langInput} onChange={e => setLangInput(e.target.value)}
-                    placeholder="Add a language (e.g. English, Arabic)"
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addLang(langInput); } }} />
-                  <button type="button" onClick={() => addLang(langInput)} className="btn-outline text-xs px-3 py-2">
-                    <Plus size={14} />
-                  </button>
-                </div>
+                <TagPicker
+                  id="languages"
+                  value={form.languages || []}
+                  onChange={v => setField('languages', v)}
+                  options={LANGUAGE_OPTIONS}
+                  placeholder="e.g. English, Arabic, Hindi…"
+                  quickPicks={['English', 'Arabic', 'Hindi', 'Urdu', 'Malayalam']}
+                  tone="neutral"
+                  max={15}
+                />
               </div>
             </div>
 

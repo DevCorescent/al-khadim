@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useClientAuth } from '@/lib/clientAuth';
-import { LayoutDashboard, Users2, LogOut, ChevronRight, Clock, XCircle, Briefcase } from 'lucide-react';
+import { LayoutDashboard, Users2, LogOut, ChevronRight, Clock, XCircle, Briefcase, Settings } from 'lucide-react';
 
 const PUBLIC_PATHS = ['/company/login', '/company/register', '/company/accept-invite', '/company/view'];
 
@@ -54,6 +54,7 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
     { href: '/company/candidates', icon: Users2, label: 'Candidates' },
     { href: '/company/jobs', icon: Briefcase, label: 'Jobs' },
     ...(clientUser?.role === 'COMPANY_ADMIN' ? [{ href: '/company/team', icon: Users2, label: 'Team' }] : []),
+    { href: '/company/settings', icon: Settings, label: 'Settings' },
   ];
 
   useEffect(() => {

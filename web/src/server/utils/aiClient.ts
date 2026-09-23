@@ -33,6 +33,8 @@ const DEFAULTS = {
 
 export interface AiConfig {
   apiKey: string;
+  /** OpenAI-compatible endpoint. Undefined = OpenAI's own. */
+  baseUrl?: string;
   model: string;
   temperature: number;
   maxTokens: number;
@@ -91,7 +93,14 @@ export function resolveConfig(settings: any): AiConfig | null {
   if (settings && settings.enabled && settings.apiKey) {
     return {
       apiKey: settings.apiKey,
-      model: ALLOWED_MODELS.includes(settings.model) ? settings.model : DEFAULT_MODEL,
+      // A custom endpoint is env-only: it changes who receives the data, so it
+      // is not something the admin UI can repoint.
+      baseUrl: process.env.OPENAI_BASE_URL || undefined,
+      // The model allowlist only applies to OpenAI itself — a compatible
+      // provider has its own model names.
+      model: process.env.OPENAI_BASE_URL
+        ? (settings.model || DEFAULT_MODEL)
+        : (ALLOWED_MODELS.includes(settings.model) ? settings.model : DEFAULT_MODEL),
       temperature: settings.temperature != null ? Number(settings.temperature) : DEFAULTS.temperature,
       maxTokens: settings.maxTokens != null ? Number(settings.maxTokens) : DEFAULTS.maxTokens,
       publicEnabled: !!settings.publicEnabled,
@@ -103,6 +112,7 @@ export function resolveConfig(settings: any): AiConfig | null {
   if (process.env.OPENAI_API_KEY) {
     return {
       apiKey: process.env.OPENAI_API_KEY,
+      baseUrl: process.env.OPENAI_BASE_URL || undefined,
       model: DEFAULT_MODEL,
       temperature: DEFAULTS.temperature,
       maxTokens: DEFAULTS.maxTokens,
@@ -127,9 +137,10 @@ export async function getClient(): Promise<AiClientResult> {
     return { configured: false, client: null, ...DEFAULTS };
   }
 
-  const key = `${config.apiKey}:${config.model}`;
+  const key = `${config.apiKey}:${config.model}:${config.baseUrl ?? ''}`;
   if (!_client || _clientKey !== key) {
-    _client = new OpenAI({ apiKey: config.apiKey });
+    // baseURL undefined => the SDK's default (api.openai.com).
+    _client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseUrl });
     _clientKey = key;
   }
 

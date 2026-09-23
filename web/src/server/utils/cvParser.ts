@@ -100,7 +100,7 @@ async function extractTextFromPDF(filePath: string): Promise<string | null> {
   return null;
 }
 
-async function extractText(filePath: string): Promise<string | null> {
+export async function extractText(filePath: string): Promise<string | null> {
   if (!fs.existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
   const ext = path.extname(filePath).toLowerCase();
 
@@ -182,36 +182,70 @@ function extractPortfolio(text: string): string | null {
 
 /* ─── 4. Name extraction – multi-strategy ────────────────────── */
 
+/**
+ * Lines that look name-shaped but are section headings. Without this, a CV
+ * whose name is ALL CAPS (so it fails the Title-Case test) falls through to
+ * the first heading in the document — "Technical Skills" becomes the name.
+ */
+const HEADING_WORDS = [
+  'technical', 'professional', 'personal', 'work', 'employment', 'career',
+  'education', 'academic', 'qualification', 'qualifications', 'skills', 'skill',
+  'experience', 'summary', 'objective', 'profile', 'projects', 'project',
+  'certifications', 'certification', 'certificates', 'achievements', 'awards',
+  'languages', 'language', 'interests', 'hobbies', 'references', 'declaration',
+  'training', 'courses', 'publications', 'activities', 'strengths', 'expertise',
+  'competencies', 'background', 'details', 'information', 'contact',
+];
+
+function looksLikeHeading(line: string): boolean {
+  const words = line.toLowerCase().split(/\s+/).filter(Boolean);
+  // A heading is short and built only from heading vocabulary ("Technical
+  // Skills", "Work Experience"), unlike a real name.
+  return words.length <= 3 && words.every((w) => HEADING_WORDS.includes(w.replace(/[^a-z]/g, '')));
+}
+
+function titleCase(s: string): string {
+  return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function extractName(text: string, lines: string[]): string | null {
   // Strategy A: look for "Name: John Smith" label
   const labeled = text.match(/(?:^|\n)\s*(?:name|full\s*name)\s*[:\-]\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})/im);
   if (labeled) return labeled[1].trim();
 
-  // Strategy B: scan first 12 non-empty lines for a name-like line
   const candidates = lines.slice(0, 12).map((l) => l.trim()).filter((l) => l.length >= 3 && l.length <= 60);
 
+  // Strategy B: an ALL CAPS line at the very top is the strongest signal — most
+  // resumes bannerise the name. Checked BEFORE the Title-Case scan, because an
+  // ALL CAPS name fails that test and would otherwise lose to a later heading.
+  for (const line of candidates.slice(0, 5)) {
+    if (
+      line === line.toUpperCase() &&
+      /^[A-Z]+(?:[ .'-]+[A-Z]+){1,4}$/.test(line) &&
+      line.length <= 40 &&
+      !looksLikeHeading(line)
+    ) {
+      return titleCase(line);
+    }
+  }
+
+  // Strategy C: scan the first 12 lines for a Title-Case name-like line
   for (const line of candidates) {
     // Skip lines with obvious non-name content
     if (/[@|:\/\\<>{}[\]0-9#*]/.test(line)) continue;
     if (/(?:resume|curriculum|vitae|cv\b|profile|summary|objective|address|phone|email|linkedin|github|http|www\.)/i.test(line)) continue;
     // Skip lines that are all uppercase and long (likely section headers like "PROFESSIONAL EXPERIENCE")
     if (line === line.toUpperCase() && line.split(' ').length > 3) continue;
+    if (looksLikeHeading(line)) continue;
 
     const words = line.split(/\s+/).filter(Boolean);
     if (words.length < 2 || words.length > 5) continue;
 
-    // Each word should look like a name part: starts uppercase, mostly letters
-    const isNameLike = words.every((w) => /^[A-Z][a-z'\-\.]{1,}$|^[A-Z]{2,5}$/.test(w));
+    // Each word should look like a name part: starts uppercase, mostly letters.
+    // ALL CAPS words are allowed up to a realistic name length (the old cap of
+    // 5 rejected "SHALMON"/"GAIKWAD").
+    const isNameLike = words.every((w) => /^[A-Z][a-z'\-.]+$|^[A-Z]{2,15}$/.test(w));
     if (isNameLike) return line.trim();
-  }
-
-  // Strategy C: ALL CAPS single line at top (many resumes do this)
-  for (const line of candidates.slice(0, 5)) {
-    if (line === line.toUpperCase() && /^[A-Z]+(\s+[A-Z]+){1,4}$/.test(line) && line.length <= 40) {
-      return line
-        .toLowerCase()
-        .replace(/\b\w/g, (c) => c.toUpperCase());
-    }
   }
 
   return null;
@@ -248,9 +282,21 @@ const NATIONALITIES = [
   'Thai','Vietnamese','Korean','Japanese','Myanmar',
 ];
 
+const NATIONALITY_LOWER = new Map(NATIONALITIES.map((n) => [n.toLowerCase(), n] as [string, string]));
+
 function extractNationality(text: string): string | null {
-  const m = text.match(/(?:nationality|citizenship|citizen)\s*[:\-]?\s*([A-Za-z]+(?:\s+[A-Za-z]+)?)/i);
-  if (m) return m[1].trim();
+  // Same-line only: `\s` would run past the blank line after "Nationality: Indian"
+  // and swallow the next section heading ("Indian\n\nPROFESSIONAL").
+  const m = text.match(/(?:nationality|citizenship|citizen)[ \t]*[:\-]?[ \t]*([A-Za-z]+(?:[ \t]+[A-Za-z]+)?)/i);
+  if (m) {
+    const captured = m[1].trim();
+    // "South African" is two words, "Indian Passport" is one plus noise: prefer a
+    // known nationality, trying the full capture before its first word.
+    const full = NATIONALITY_LOWER.get(captured.toLowerCase());
+    if (full) return full;
+    const first = captured.split(/[ \t]+/)[0];
+    return NATIONALITY_LOWER.get(first.toLowerCase()) ?? first;
+  }
 
   const lower = text.toLowerCase();
   for (const n of NATIONALITIES) {
@@ -458,18 +504,42 @@ const LANGUAGES = [
   'Italian','Portuguese','Dutch','Greek','Polish','Romanian','Ukrainian','Swahili','Amharic',
 ];
 
+/**
+ * True when a detected "languages" block is really a technical-skills list.
+ *
+ * Developer CVs write "Languages: Java, JavaScript" as a sub-label inside
+ * Technical Skills, and the section splitter takes that as the start of the
+ * spoken-languages section — so every following line (Backend, Frontend,
+ * Databases…) got reported as a language. A block with several known skills
+ * and no known spoken language is a tech list, not languages.
+ */
+function isTechList(block: string): boolean {
+  const lower = block.toLowerCase();
+  const langHits = LANGUAGES.filter((l) => lower.includes(l.toLowerCase())).length;
+  if (langHits > 0) return false;
+  let skillHits = 0;
+  for (const lower_ of Array.from(SKILL_LOWER.keys())) {
+    if (lower.includes(lower_)) skillHits++;
+    if (skillHits >= 2) return true;
+  }
+  return false;
+}
+
 function extractLanguages(sections: Sections, text: string): string[] {
-  const found  = new Set<string>();
-  const source = sections.languages || text;
-  const lower  = source.toLowerCase();
+  const found = new Set<string>();
+  // Fall back to whole-document dictionary matching when the "languages"
+  // section turns out to be a tech list.
+  const section = sections.languages && !isTechList(sections.languages) ? sections.languages : null;
+  const lower = (section || text).toLowerCase();
 
   for (const lang of LANGUAGES) {
     if (lower.includes(lang.toLowerCase())) found.add(lang);
   }
 
-  // Also pull from labelled language section
-  if (sections.languages) {
-    const items = sections.languages
+  // Also pull free-text entries from a genuine language section, so languages
+  // outside the dictionary ("Konkani", "Tigrinya") still come through.
+  if (section) {
+    const items = section
       .split(/[\n,;•●▪►\-|]/)
       .map((s) => s.trim())
       .filter((s) => s.length > 2 && s.length < 40 && /^[A-Za-z\s]+$/.test(s));
@@ -477,7 +547,13 @@ function extractLanguages(sections: Sections, text: string): string[] {
     for (const item of items) {
       // Remove proficiency descriptors
       const clean = item.replace(/\b(?:native|fluent|proficient|intermediate|basic|beginner|advanced|mother\s*tongue|bilingual|conversational|working\s*knowledge)\b/gi, '').trim();
-      if (clean.length > 1) found.add(clean);
+      // Never accept something the skill dictionary already knows, or an
+      // acronym like HTML/CSS/SQL — those are technologies, not languages.
+      if (clean.length < 2) continue;
+      if (SKILL_LOWER.has(clean.toLowerCase())) continue;
+      if (/^[A-Z]{2,}$/.test(clean)) continue;
+      if (clean.split(/\s+/).length > 2) continue;
+      found.add(clean);
     }
   }
 
@@ -545,6 +621,13 @@ function extractSummary(sections: Sections): string | null {
 
 /* ─── 12. Main entry point ────────────────────────────────────── */
 
+/** Removes terms already reported as languages from the skills list. */
+function withoutLanguages(skills: string[], languages: string[]): string[] {
+  if (!languages.length) return skills;
+  const langs = new Set(languages.map((l) => l.toLowerCase()));
+  return skills.filter((s) => !langs.has(s.toLowerCase()));
+}
+
 /**
  * Parse a CV from an absolute disk path. Never throws: an unreadable file
  * yields `{ error }`, and a file with no extractable text yields empty fields
@@ -559,10 +642,26 @@ export async function parseCV(filePath: string): Promise<ParsedCV> {
     // can check `result.error` without narrowing.
     return { error: `Could not read file: ${err.message}` } as ParsedCV;
   }
+  return parseCvFromText(raw);
+}
 
-  if (!raw || raw.replace(/\s/g, '').length < 30) {
+/** True when a file yielded too little text to be a readable CV. */
+export function hasUsableText(raw: string | null | undefined): boolean {
+  return !!raw && raw.replace(/\s/g, '').length >= 30;
+}
+
+export const NO_TEXT_MESSAGE =
+  'Could not extract readable text from this file. If it is a scanned/image PDF please convert it to a text-based PDF or DOCX and re-upload.';
+
+/**
+ * Runs the deterministic extractors over already-extracted text. Split out of
+ * `parseCV` so the LLM layer (server/utils/cvExtract.ts) can reuse one text
+ * extraction for both itself and this regex fallback.
+ */
+export function parseCvFromText(raw: string | null): ParsedCV {
+  if (!hasUsableText(raw)) {
     return {
-      _error: 'Could not extract readable text from this file. If it is a scanned/image PDF please convert it to a text-based PDF or DOCX and re-upload.',
+      _error: NO_TEXT_MESSAGE,
       firstName: '', lastName: '', email: null, phone: null,
       skills: [], languages: [], nationality: null, currentLocation: null,
       experience: null, headline: null, summary: null, education: null,
@@ -570,7 +669,7 @@ export async function parseCV(filePath: string): Promise<ParsedCV> {
     };
   }
 
-  const text     = cleanText(raw);
+  const text     = cleanText(raw as string);
   const lines    = text.split('\n').map((l) => l.trim()).filter(Boolean);
   const sections = splitSections(text);
 
@@ -582,6 +681,7 @@ export async function parseCV(filePath: string): Promise<ParsedCV> {
   const nameParts = name ? name.trim().split(/\s+/) : [];
 
   const experience = extractExperience(text);
+  const languages  = extractLanguages(sections, text);
   const parsed: ParsedCV = {
     firstName:       nameParts[0]   || '',
     lastName:        nameParts.slice(1).join(' ') || '',
@@ -593,8 +693,11 @@ export async function parseCV(filePath: string): Promise<ParsedCV> {
     currentLocation: extractLocation(text),
     experience,
     headline:        extractHeadline(text, lines, experience, sections),
-    skills:          extractSkills(sections, text),
-    languages:       extractLanguages(sections, text),
+    // Several languages ('English', 'Arabic', 'Hindi', 'Urdu') are also in the
+    // skill dictionary, since some CVs list them under Skills. When a term was
+    // already picked up as a language, don't repeat it as a skill too.
+    skills:          withoutLanguages(extractSkills(sections, text), languages),
+    languages,
     education:       extractEducation(sections),
     summary:         extractSummary(sections),
     // Debug info (not sent to client but logged)

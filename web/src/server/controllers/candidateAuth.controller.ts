@@ -1,7 +1,6 @@
 // Ported from api/src/routes/candidateAuth.js
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { readFile } from 'fs/promises';
 import path from 'path';
 import type { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
@@ -9,7 +8,8 @@ import { requireCandidate } from '../auth';
 import { body, handler, json, query } from '../http';
 import { rateLimit } from '../rateLimit';
 import { absoluteUploadPath, parseUpload } from '../upload';
-import { parseCV } from '../utils/cvParser';
+import { fileResponse, wantsInline } from '../utils/fileResponse';
+import { extractCv } from '../utils/cvExtract';
 import { isValidYouTubeUrl } from '../utils/youtube';
 import { sendTemplatedMail } from '../utils/templateRenderer';
 import { normalizeEmail, redeemTicket } from '../utils/otp';
@@ -46,27 +46,12 @@ function generateTokens(candidateId: string) {
   return { access, refresh };
 }
 
-const MIME: Record<string, string> = {
-  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
-  '.pdf': 'application/pdf', '.doc': 'application/msword',
-  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-};
-
-/** Content-Disposition like Express `res.download(file, name)`. */
-function attachmentHeader(filename: string) {
-  const ascii = filename.replace(/[^\x20-\x7e]/g, '?').replace(/["\\]/g, '\\$&');
-  const encoded = encodeURIComponent(filename).replace(/['()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
-  return ascii === filename
-    ? `attachment; filename="${ascii}"`
-    : `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
-}
-
 /* ── Parse CV (public – no auth needed) ── */
 export const parseCv = handler(async (req) => {
   const { file } = await parseUpload(req, ['cv']);
   if (!file) return json({ error: 'No CV file uploaded' }, 400);
   try {
-    const parsed = await parseCV(absoluteUploadPath(file.path));
+    const parsed = await extractCv(absoluteUploadPath(file.path));
     return json({ parsed, cvPath: file.path });
   } catch (err: any) {
     console.error('CV parse error:', err);
@@ -427,21 +412,11 @@ export const downloadDocument = handler<{ id: string }>(async (req, { params }) 
   if (!request || request.candidateId !== candidate.id || !request.filePath) {
     return json({ error: 'File not found' }, 404);
   }
-  const abs = absoluteUploadPath(request.filePath);
-  let data: Buffer;
-  try {
-    data = await readFile(abs);
-  } catch (err: any) {
-    // res.download's send error (ENOENT → 404) went to the global error handler.
-    if (err.code === 'ENOENT') return json({ error: err.message }, 404);
-    throw err;
-  }
-  return new Response(new Uint8Array(data), {
-    headers: {
-      'Content-Type': MIME[path.extname(request.title).toLowerCase()] || MIME[path.extname(abs).toLowerCase()] || 'application/octet-stream',
-      'Content-Disposition': attachmentHeader(request.title),
-      'Content-Length': String(data.length),
-    },
+  // The request title ("Passport copy") carries no extension, so fileResponse
+  // appends the stored file's — otherwise the download has no type.
+  return fileResponse(request.filePath, request.title, {
+    inline: wantsInline(req),
+    mimeType: request.mimeType,
   });
 });
 
@@ -457,9 +432,11 @@ export const changePassword = handler(async (req) => {
     if (!valid) return json({ error: 'Current password is incorrect' }, 400);
 
     const hashed = await bcrypt.hash(String(newPassword), 12);
+    // Revoke the refresh token as the staff endpoint does, so a session opened
+    // with the old password can't keep renewing itself for the next 30 days.
     await prisma.candidateAccount.update({
       where: { id: candidateAccount.id },
-      data: { password: hashed },
+      data: { password: hashed, refreshToken: null },
     });
     return json({ message: 'Password changed successfully' });
   } catch {
@@ -475,41 +452,4 @@ export const logout = handler(async (req) => {
     data: { refreshToken: null },
   });
   return json({ message: 'Logged out' });
-});
-
-/* ── Public profiles (approved + isPublic) ── */
-export const publicProfiles = handler(async (req) => {
-  const q = query(req);
-  const { page, limit, skip } = pagination(q, { defaultLimit: 20, maxLimit: 100 });
-  const search = q.search ? String(q.search) : '';
-
-  const where: any = { isPublic: true };
-  if (search) {
-    where.OR = [
-      { firstName: { contains: search, mode: 'insensitive' } },
-      { lastName:  { contains: search, mode: 'insensitive' } },
-      { headline:  { contains: search, mode: 'insensitive' } },
-      { skills: { has: search } },
-    ];
-  }
-
-  const [profiles, total] = await Promise.all([
-    prisma.candidate.findMany({
-      where,
-      skip,
-      take: limit,
-      orderBy: { updatedAt: 'desc' },
-      select: {
-        id: true, firstName: true, lastName: true,
-        headline: true, summary: true, photo: true,
-        currentLocation: true, experience: true, skills: true,
-        languages: true, nationality: true, linkedIn: true,
-        portfolio: true, status: true,
-        _count: { select: { applications: true } },
-      },
-    }),
-    prisma.candidate.count({ where }),
-  ]);
-
-  return json({ data: profiles, total, page });
 });

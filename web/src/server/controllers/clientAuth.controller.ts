@@ -205,7 +205,12 @@ export const changePassword = handler(async (req) => {
     if (!valid) return json({ error: 'Current password is incorrect' }, 400);
 
     const hashed = await bcrypt.hash(String(newPassword), 12);
-    await prisma.clientUser.update({ where: { id: clientUser.id }, data: { password: hashed } });
+    // Revoke the refresh token as the staff endpoint does, so a session opened
+    // with the old password can't keep renewing itself for the next 30 days.
+    await prisma.clientUser.update({
+      where: { id: clientUser.id },
+      data: { password: hashed, refreshToken: null },
+    });
     return json({ message: 'Password changed successfully' });
   } catch {
     return json({ error: 'Server error' }, 500);
@@ -331,4 +336,74 @@ export const toggleTeammate = handler<{ id: string }>(async (req, { params }) =>
     data: { isActive: !target.isActive },
   });
   return json({ id: updated.id, isActive: updated.isActive });
+});
+
+/**
+ * Loads a teammate of the calling company admin. A user belonging to another
+ * company returns the same 404 as a missing one, so company ids can't be probed.
+ */
+async function findTeammate(id: string, clientId: string) {
+  const target = await prisma.clientUser.findUnique({ where: { id }, include: { client: true } });
+  if (!target || target.clientId !== clientId) {
+    return { error: json({ error: 'User not found' }, 404) } as const;
+  }
+  return { target } as const;
+}
+
+/* ── Team: resend a pending invite (company admin only) ──
+ * Mirrors the staff-side /client-users/:id/resend-invite: a fresh token and a
+ * fresh expiry, so the old emailed link stops working. */
+export const resendTeammateInvite = handler<{ id: string }>(async (req, { params }) => {
+  const { clientUser: me, client } = await requireApprovedClient(req);
+  assertCompanyAdmin(me);
+  const { target, error } = await findTeammate(params.id, client.id);
+  if (error) return error;
+  if (target.acceptedAt) return json({ error: 'This user has already accepted their invite' }, 400);
+
+  const inviteToken = crypto.randomBytes(32).toString('hex');
+  const inviteExpiresAt = new Date(Date.now() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+  const updated = await prisma.clientUser.update({
+    where: { id: target.id },
+    data: { inviteToken, inviteExpiresAt },
+  });
+
+  await sendInviteEmail({
+    clientUser: updated,
+    inviteToken,
+    companyName: client.companyName,
+    invitedByName: me.name,
+  });
+
+  return json({ message: 'Invite resent' });
+});
+
+/* ── Team: remove a teammate (company admin only) ──
+ * Intended for withdrawing a mistaken invite. A teammate who has already
+ * accepted and acted on shares has linked rows, so deactivation is the answer
+ * there — the same trade-off the staff-side delete makes. */
+export const removeTeammate = handler<{ id: string }>(async (req, { params }) => {
+  const { clientUser: me, client } = await requireApprovedClient(req);
+  assertCompanyAdmin(me);
+  const { target, error } = await findTeammate(params.id, client.id);
+  if (error) return error;
+  if (target.id === me.id) return json({ error: "You can't remove your own account" }, 400);
+
+  // Never let the company lock itself out of its own portal.
+  if (target.role === 'COMPANY_ADMIN') {
+    const admins = await prisma.clientUser.count({
+      where: { clientId: client.id, role: 'COMPANY_ADMIN', isActive: true },
+    });
+    if (admins <= 1) return json({ error: 'Your company must keep at least one active admin' }, 400);
+  }
+
+  try {
+    await prisma.clientUser.delete({ where: { id: target.id } });
+    return json({ message: 'Teammate removed' });
+  } catch (err: any) {
+    // Responded to a profile share, or raised a job request.
+    if (err?.code === 'P2003') {
+      return json({ error: 'This teammate has activity on your account; deactivate them instead.' }, 409);
+    }
+    return json({ error: err.message }, 400);
+  }
 });

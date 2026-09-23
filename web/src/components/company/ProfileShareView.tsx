@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { FileText, Download, Star, XCircle, Calendar, Lock, ExternalLink, Video, MapPin, CheckCircle2, PlayCircle } from 'lucide-react';
+import { FileText, Download, Eye, Star, XCircle, Calendar, Lock, ExternalLink, Video, MapPin, CheckCircle2, PlayCircle } from 'lucide-react';
 import { SHAREABLE_FIELD_GROUPS } from '@/lib/shareableFields';
 import YouTubeEmbed from '@/components/YouTubeEmbed';
 import { isValidYouTubeUrl } from '@/lib/youtube';
@@ -66,13 +66,15 @@ interface Props {
   };
   mode: 'portal' | 'public';
   onDownload?: (docId: string, title: string) => void;
+  /** Opens the document in a preview instead of downloading it. */
+  onView?: (docId: string, title: string, mimeType?: string | null) => void;
   onRespond?: (action: 'SHORTLIST' | 'REJECT' | 'REQUEST_INTERVIEW', reason?: string, preferredAt?: string, interviewerEmails?: string) => Promise<void> | void;
   responding?: boolean;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export default function ProfileShareView({ data, mode, onDownload, onRespond, responding }: Props) {
+export default function ProfileShareView({ data, mode, onDownload, onView, onRespond, responding }: Props) {
   const [reasonOpen, setReasonOpen] = useState<null | 'REJECT' | 'REQUEST_INTERVIEW'>(null);
   const [reason, setReason] = useState('');
   const [preferredAt, setPreferredAt] = useState('');
@@ -177,15 +179,37 @@ export default function ProfileShareView({ data, mode, onDownload, onRespond, re
             <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-5">
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Documents</h3>
               <div className="space-y-2">
-                {documents.map((d: any) => (
-                  <button key={d.id} onClick={() => onDownload?.(d.id, d.title)}
-                    className="w-full flex items-center justify-between gap-3 bg-gray-50 hover:bg-gray-100 rounded-xl px-4 py-3 transition-colors text-left">
-                    <span className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                      <FileText size={14} className="text-primary-400" /> {d.title}
-                    </span>
-                    <Download size={14} className="text-gray-400" />
-                  </button>
-                ))}
+                {documents.map((d: any) => {
+                  // `viewable` comes from the share snapshot: PDFs and images can
+                  // be previewed, a .docx can only be downloaded.
+                  const canView = !!onView && d.viewable !== false;
+                  return (
+                    <div
+                      key={d.id}
+                      className="flex items-center gap-2 bg-gray-50 rounded-xl px-4 py-3"
+                    >
+                      <FileText size={14} className="text-primary-400 shrink-0" />
+                      <span className="flex-1 min-w-0 text-sm font-semibold text-gray-700 truncate">
+                        {d.title}
+                      </span>
+                      {canView && (
+                        <button
+                          onClick={() => onView?.(d.id, d.title, d.mimeType)}
+                          className="flex items-center gap-1.5 text-xs font-semibold text-primary-600 hover:text-white hover:bg-primary-400 border border-primary-200 hover:border-primary-400 rounded-full px-3 py-1.5 transition-colors shrink-0"
+                        >
+                          <Eye size={13} /> View
+                        </button>
+                      )}
+                      <button
+                        onClick={() => onDownload?.(d.id, d.title)}
+                        title={`Download ${d.filename || d.title}`}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-gray-900 border border-gray-200 hover:border-gray-400 rounded-full px-3 py-1.5 transition-colors shrink-0"
+                      >
+                        <Download size={13} /> <span className="hidden sm:inline">Download</span>
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

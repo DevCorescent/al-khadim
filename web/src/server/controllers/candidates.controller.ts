@@ -6,7 +6,7 @@ import { requirePermission } from '../permissions';
 import { body, handler, HttpError, json, query } from '../http';
 import { rateLimit } from '../rateLimit';
 import { absoluteUploadPath, parseUpload } from '../upload';
-import { parseCV } from '../utils/cvParser';
+import { extractCv } from '../utils/cvExtract';
 import { generateCvId } from '../utils/cvId';
 import { isValidYouTubeUrl } from '../utils/youtube';
 import { pagination, pickFields, scalarFields, toDate, toNumber } from '../validate';
@@ -259,8 +259,9 @@ export const parseCv = handler(async (req) => {
     return json({ error: 'CV must be a PDF or Word document' }, 400);
   }
   try {
-    const parsed = await parseCV(absoluteUploadPath(file.path));
+    const parsed = await extractCv(absoluteUploadPath(file.path));
     delete parsed._debug;
+    delete parsed._meta;
     return json({ parsed, cvPath: file.path });
   } catch (err: any) {
     return json({ error: 'Failed to parse CV', detail: err.message }, 500);
@@ -421,21 +422,65 @@ export const update = handler<{ id: string }>(async (req, { params }) => {
 
 /* Admin delete candidate. Their job applications and interviews go with them
  * (other related rows cascade or are detached by the schema). */
+/**
+ * Delete a candidate and everything hanging off them. The DB rows cascade
+ * (account, edit history, documents, document requests, profile shares,
+ * tracking), but the uploaded files do not, so they are unlinked here —
+ * otherwise every delete leaves its CV and documents on disk forever.
+ *
+ * A file still referenced by a CandidateRegistration is left alone: approval
+ * copies `cvPath`/`photo` across rather than duplicating the file, so removing
+ * it would break the registration record the admin queue still links to.
+ */
 export const remove = handler<{ id: string }>(async (req, { params }) => {
   await requirePermission(req, 'candidates', 'delete');
-  const existing = await prisma.candidate.findUnique({ where: { id: params.id }, select: { id: true } });
+  const existing = await prisma.candidate.findUnique({
+    where: { id: params.id },
+    select: {
+      id: true, email: true, cvPath: true, photo: true,
+      documents: { select: { filePath: true } },
+      documentRequests: { select: { filePath: true } },
+    },
+  });
   if (!existing) return json({ error: 'Candidate not found' }, 404);
+
+  const files = [
+    existing.cvPath,
+    existing.photo,
+    ...existing.documents.map((d) => d.filePath),
+    ...existing.documentRequests.map((d) => d.filePath),
+  ].filter((p): p is string => !!p && p.startsWith('uploads/'));
+
+  const registrations = await prisma.candidateRegistration.findMany({
+    where: { email: existing.email },
+    select: { cvPath: true, photo: true },
+  });
+  const keep = new Set(registrations.flatMap((r) => [r.cvPath, r.photo]).filter(Boolean) as string[]);
+
   try {
     await prisma.$transaction([
       prisma.interview.deleteMany({ where: { candidateId: params.id } }),
       prisma.candidateJob.deleteMany({ where: { candidateId: params.id } }),
       prisma.candidate.delete({ where: { id: params.id } }),
     ]);
-    return json({ message: 'Candidate deleted' });
   } catch (err: any) {
     if (err?.code === 'P2003') return json({ error: 'This candidate has linked records and cannot be deleted' }, 409);
-    prismaError(err);
+    return prismaError(err);
   }
+
+  // Only after the rows are gone, so a failed delete never loses files.
+  let removedFiles = 0;
+  for (const p of new Set(files)) {
+    if (keep.has(p)) continue;
+    try {
+      await unlink(absoluteUploadPath(p));
+      removedFiles++;
+    } catch {
+      /* already gone from disk */
+    }
+  }
+
+  return json({ message: 'Candidate deleted', removedFiles });
 });
 
 /* Assign candidate to job */

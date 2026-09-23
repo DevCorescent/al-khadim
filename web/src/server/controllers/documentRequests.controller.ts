@@ -1,31 +1,12 @@
 // Ported from api/src/routes/documentRequests.js
-import { readFile } from 'fs/promises';
-import path from 'path';
 import { prisma } from '@/lib/prisma';
 import { requirePermission } from '../permissions';
 import { body, handler, json, query } from '../http';
-import { absoluteUploadPath } from '../upload';
+import { fileResponse, wantsInline } from '../utils/fileResponse';
 import { sendTemplatedMail } from '../utils/templateRenderer';
 import { escapeHtml } from '../validate';
 
 const WEB_URL = process.env.WEB_URL || 'http://localhost:3000';
-
-const MIME_TYPES: Record<string, string> = {
-  '.pdf': 'application/pdf',
-  '.doc': 'application/msword',
-  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.png': 'image/png',
-  '.webp': 'image/webp',
-};
-
-/** `Content-Disposition: attachment` like Express's res.download (via the content-disposition package). */
-function attachmentHeader(filename: string) {
-  const fallback = filename.replace(/[^\x20-\x7e]/g, '?').replace(/["\\]/g, '\\$&');
-  if (/^[\x20-\x7e]*$/.test(filename)) return `attachment; filename="${fallback}"`;
-  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
-}
 
 /* ── List requests for a candidate (staff) ── */
 export const list = handler(async (req) => {
@@ -115,21 +96,11 @@ export const download = handler<{ id: string }>(async (req, { params }) => {
   const request = await prisma.documentRequest.findUnique({ where: { id: params.id } });
   if (!request || !request.filePath) return json({ error: 'No file uploaded yet' }, 404);
 
-  const abs = absoluteUploadPath(request.filePath);
-  let file: Buffer;
-  try {
-    file = await readFile(abs);
-  } catch (err: any) {
-    // res.download forwarded a missing file to the error handler as a 404.
-    return json({ error: err.message }, err.code === 'ENOENT' ? 404 : 500);
-  }
-  // Like res.download: Content-Type from the stored file's extension, download name = request title.
-  return new Response(new Uint8Array(file), {
-    headers: {
-      'Content-Type': MIME_TYPES[path.extname(abs).toLowerCase()] || 'application/octet-stream',
-      'Content-Disposition': attachmentHeader(request.title),
-      'Content-Length': String(file.length),
-    },
+  // Content-Type from the stored file; download name = request title plus that
+  // file's extension, so the saved file actually opens.
+  return fileResponse(request.filePath, request.title, {
+    inline: wantsInline(req),
+    mimeType: request.mimeType,
   });
 });
 

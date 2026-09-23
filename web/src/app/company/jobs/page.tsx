@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useClientAuth, clientApi } from '@/lib/clientAuth';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { Plus, Briefcase, MapPin, Clock, CheckCircle2, Eye } from 'lucide-react';
+import { Plus, Briefcase, MapPin, Clock, CheckCircle2, Eye, Pencil, Trash2 } from 'lucide-react';
 import { useCategories, useIndustries } from '@/lib/taxonomy';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -40,16 +40,58 @@ export default function CompanyJobsPage() {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  // When set, the form edits that request instead of creating a new one.
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   const submitMutation = useMutation({
-    mutationFn: () => clientApi(accessToken!).post('/api/jobs/mine', form),
+    mutationFn: () => editingId
+      ? clientApi(accessToken!).put(`/api/jobs/mine/${editingId}`, form)
+      : clientApi(accessToken!).post('/api/jobs/mine', form),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['company-jobs'] });
-      toast.success('Job request submitted — Al Khadim will review it');
+      toast.success(editingId ? 'Job request updated' : 'Job request submitted — Al Khadim will review it');
       setOpen(false);
+      setEditingId(null);
       setForm(INITIAL_FORM);
     },
     onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to submit job request'),
   });
+
+  const withdrawMutation = useMutation({
+    mutationFn: (id: string) => clientApi(accessToken!).delete(`/api/jobs/mine/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['company-jobs'] });
+      toast.success('Job request withdrawn');
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to withdraw job request'),
+  });
+
+  /** Loads a request into the form for editing. Only unpublished own requests qualify. */
+  function startEdit(job: any) {
+    setForm({
+      title: job.title ?? '',
+      description: job.description ?? '',
+      location: job.location ?? '',
+      country: job.country ?? 'UAE',
+      jobType: job.jobType ?? '',
+      experience: job.experience ?? '',
+      positionsCount: String(job.positionsCount ?? '1'),
+      salaryMin: job.salaryMin == null ? '' : String(job.salaryMin),
+      salaryMax: job.salaryMax == null ? '' : String(job.salaryMax),
+      currency: job.currency ?? 'AED',
+      deadline: job.deadline ? String(job.deadline).slice(0, 10) : '',
+      categoryId: job.categoryId ?? '',
+      industryId: job.industryId ?? '',
+    });
+    setEditingId(job.id);
+    setOpen(true);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setForm(INITIAL_FORM);
+    setOpen(false);
+  }
 
   const list = jobs || [];
 
@@ -60,13 +102,19 @@ export default function CompanyJobsPage() {
           <h1 className="text-xl font-bold text-gray-900">Jobs</h1>
           <p className="text-xs text-gray-400 mt-0.5">Tell Al Khadim what roles you're hiring for</p>
         </div>
-        <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-1.5 bg-primary-400 text-white text-xs font-bold px-3 py-2 rounded-xl hover:bg-primary-500 transition-colors">
+        <button
+          onClick={() => (open ? cancelEdit() : setOpen(true))}
+          className="flex items-center gap-1.5 bg-primary-400 text-white text-xs font-bold px-3 py-2 rounded-xl hover:bg-primary-500 transition-colors"
+        >
           <Plus size={13} /> Post a Job
         </button>
       </div>
 
       {open && (
         <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4 mb-5">
+          <h2 className="text-sm font-bold text-gray-800">
+            {editingId ? 'Edit Job Request' : 'New Job Request'}
+          </h2>
           <div className="grid sm:grid-cols-2 gap-3">
             <div className="sm:col-span-2">
               <label className="label">Job Title *</label>
@@ -130,9 +178,11 @@ export default function CompanyJobsPage() {
             <strong>Note:</strong> Your job request is internal-only. Al Khadim will review it and publish it to the public careers page when ready.
           </div>
           <div className="flex justify-end gap-2">
-            <button onClick={() => setOpen(false)} className="btn-outline text-sm py-2 px-4">Cancel</button>
+            <button onClick={cancelEdit} className="btn-outline text-sm py-2 px-4">Cancel</button>
             <button onClick={() => submitMutation.mutate()} disabled={!form.title || submitMutation.isPending} className="btn-primary text-sm py-2 px-4 disabled:opacity-50">
-              {submitMutation.isPending ? 'Submitting…' : 'Submit Job Request'}
+              {submitMutation.isPending
+                ? 'Saving…'
+                : editingId ? 'Save Changes' : 'Submit Job Request'}
             </button>
           </div>
         </div>
@@ -179,6 +229,32 @@ export default function CompanyJobsPage() {
                     <span className="flex items-center gap-1 text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
                       <CheckCircle2 size={9} /> Awaiting Publish
                     </span>
+                  )}
+
+                  {/* Editable only while it's still our own unpublished request —
+                      the same rule the API enforces. */}
+                  {!job.isPublished && job.source === 'COMPANY_REQUEST' && (
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <button
+                        onClick={() => startEdit(job)}
+                        title="Edit this request"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-primary-500 hover:bg-primary-50 transition-colors"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm(`Withdraw the request for "${job.title}"? Al Khadim will be notified.`)) {
+                            withdrawMutation.mutate(job.id);
+                          }
+                        }}
+                        disabled={withdrawMutation.isPending}
+                        title="Withdraw this request"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>

@@ -15,6 +15,7 @@ import ShareProfileModal from '@/components/admin/ShareProfileModal';
 import YouTubeEmbed from '@/components/YouTubeEmbed';
 import { isValidYouTubeUrl } from '@/lib/youtube';
 import CandidateTrackingPanel from '@/components/admin/CandidateTrackingPanel';
+import DocumentRequestsPanel from '@/components/admin/DocumentRequestsPanel';
 import { useCategories, useIndustries } from '@/lib/taxonomy';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
@@ -551,25 +552,34 @@ export default function CandidateDetailPage() {
 
       {/* ── DOCUMENTS TAB ── */}
       {tab === 'documents' && (
-        <div className="space-y-3">
-          <h2 className="text-base font-bold text-gray-900 mb-2">Documents</h2>
-          {(c.documents || []).length === 0 ? (
-            <div className="bg-white rounded-2xl border border-gray-200 p-10 text-center text-gray-400 text-sm">No documents uploaded</div>
-          ) : (
-            (c.documents || []).map((doc: any) => (
-              <div key={doc.id} className="bg-white rounded-2xl border border-gray-200 p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <FileText size={16} className="text-primary-400 shrink-0" />
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">{doc.title}</p>
-                    <p className="text-[11px] text-gray-400">{doc.type} · {new Date(doc.createdAt).toLocaleDateString()}</p>
+        <div className="space-y-5">
+          <div className="space-y-3">
+            <div>
+              <h2 className="text-base font-bold text-gray-900">Uploaded Documents</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Files already on this candidate's profile</p>
+            </div>
+            {(c.documents || []).length === 0 ? (
+              <div className="bg-white rounded-2xl border border-gray-200 p-10 text-center text-gray-400 text-sm">No documents uploaded</div>
+            ) : (
+              (c.documents || []).map((doc: any) => (
+                <div key={doc.id} className="bg-white rounded-2xl border border-gray-200 p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <FileText size={16} className="text-primary-400 shrink-0" />
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">{doc.title}</p>
+                      <p className="text-[11px] text-gray-400">{doc.type} · {new Date(doc.createdAt).toLocaleDateString()}</p>
+                    </div>
                   </div>
+                  <a href={`${API_URL}/${doc.filePath}`} target="_blank" rel="noopener noreferrer"
+                    className="text-xs font-semibold text-primary-500 hover:underline">View</a>
                 </div>
-                <a href={`${API_URL}/${doc.filePath}`} target="_blank" rel="noopener noreferrer"
-                  className="text-xs font-semibold text-primary-500 hover:underline">View</a>
-              </div>
-            ))
-          )}
+              ))
+            )}
+          </div>
+
+          {/* Requesting documents needs no tracking record — the API takes a bare
+              candidateId — so the panel belongs here, not only inside Tracking. */}
+          <DocumentRequestsPanel candidateId={c.id} />
         </div>
       )}
 

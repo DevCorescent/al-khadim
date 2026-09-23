@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useClientAuth, clientApi } from '@/lib/clientAuth';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { UserPlus, Send, Power, Users2 } from 'lucide-react';
+import { UserPlus, Send, Power, Users2, Trash2 } from 'lucide-react';
 
 export default function CompanyTeamPage() {
   const { accessToken, clientUser } = useClientAuth();
@@ -33,6 +33,18 @@ export default function CompanyTeamPage() {
     mutationFn: (id: string) => clientApi(accessToken!).patch(`/api/client-auth/team/${id}/toggle-active`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['company-team'] }); toast.success('Updated'); },
     onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to update'),
+  });
+
+  const resendMutation = useMutation({
+    mutationFn: (id: string) => clientApi(accessToken!).post(`/api/client-auth/team/${id}/resend-invite`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['company-team'] }); toast.success('Invite resent — the previous link no longer works'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to resend invite'),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (id: string) => clientApi(accessToken!).delete(`/api/client-auth/team/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['company-team'] }); toast.success('Teammate removed'); },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to remove teammate'),
   });
 
   if (clientUser?.role !== 'COMPANY_ADMIN') {
@@ -94,10 +106,31 @@ export default function CompanyTeamPage() {
                   <p className="text-xs text-gray-400">{u.email}</p>
                 </div>
                 {u.id !== clientUser?.id && (
-                  <button onClick={() => toggleMutation.mutate(u.id)} title={u.isActive ? 'Deactivate' : 'Activate'}
-                    className={`p-1.5 rounded-lg transition-colors ${u.isActive ? 'text-red-400 hover:bg-red-50' : 'text-emerald-500 hover:bg-emerald-50'}`}>
-                    <Power size={13} />
-                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {/* Resend only makes sense while the invite is still outstanding. */}
+                    {!u.acceptedAt && (
+                      <button onClick={() => resendMutation.mutate(u.id)} disabled={resendMutation.isPending}
+                        title="Resend invite email"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-primary-500 hover:bg-primary-50 transition-colors disabled:opacity-40">
+                        <Send size={13} />
+                      </button>
+                    )}
+                    <button onClick={() => toggleMutation.mutate(u.id)} title={u.isActive ? 'Deactivate' : 'Activate'}
+                      className={`p-1.5 rounded-lg transition-colors ${u.isActive ? 'text-red-400 hover:bg-red-50' : 'text-emerald-500 hover:bg-emerald-50'}`}>
+                      <Power size={13} />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm(`Remove ${u.name} from your team? ${u.acceptedAt ? 'They will lose access immediately.' : 'Their invite link will stop working.'}`)) {
+                          removeMutation.mutate(u.id);
+                        }
+                      }}
+                      disabled={removeMutation.isPending}
+                      title="Remove from team"
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40">
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                 )}
               </div>
             ))}

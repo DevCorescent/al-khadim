@@ -1,6 +1,5 @@
 // Ported from api/src/routes/profileShares.js
 import crypto from 'crypto';
-import { readFile } from 'fs/promises';
 import path from 'path';
 import bcrypt from 'bcryptjs';
 import type { NextRequest } from 'next/server';
@@ -9,7 +8,7 @@ import { requireApprovedClient } from '../auth';
 import { requirePermission } from '../permissions';
 import { body, clientIp, handler, json, query } from '../http';
 import { rateLimit } from '../rateLimit';
-import { absoluteUploadPath } from '../upload';
+import { downloadName, fileResponse, isViewableType, MIME_BY_EXT, wantsInline } from '../utils/fileResponse';
 import { sendTemplatedMail } from '../utils/templateRenderer';
 import { nextStatus } from '../utils/profileShareStatus';
 import { ALL_SHAREABLE_FIELDS } from '../constants/shareableFields';
@@ -73,7 +72,9 @@ async function resolveDocuments(candidateId: string, sharedDocumentIds: string[]
       type: 'CV',
       title: `CV - ${candidate.firstName} ${candidate.lastName}`,
       filePath: candidate.cvPath,
-      mimeType: null,
+      // The CV has no Document row to read a type from, so derive it from the
+      // stored file. Without it the download arrives as octet-stream.
+      mimeType: MIME_BY_EXT[path.extname(String(candidate.cvPath)).toLowerCase()] || null,
       fileSize: null,
     });
   }
@@ -112,7 +113,17 @@ function companySnapshot(snapshot: any) {
   if (!snapshot || typeof snapshot !== 'object' || !Array.isArray(snapshot.documents)) return snapshot;
   return {
     ...snapshot,
-    documents: snapshot.documents.map(({ filePath, ...doc }: any) => doc),
+    documents: snapshot.documents.map(({ filePath, ...doc }: any) => {
+      const mime = doc.mimeType || MIME_BY_EXT[path.extname(String(filePath || '')).toLowerCase()] || null;
+      return {
+        ...doc,
+        mimeType: mime,
+        // The name the download will actually arrive under, and whether the
+        // browser can preview it — both drive the company-portal buttons.
+        filename: downloadName(doc.title, String(filePath || '')),
+        viewable: isViewableType(mime),
+      };
+    }),
   };
 }
 
@@ -133,34 +144,17 @@ function safeShareView(share: any) {
   };
 }
 
-const DOWNLOAD_TYPES: Record<string, string> = {
-  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
-  '.pdf': 'application/pdf', '.doc': 'application/msword',
-  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-};
+/** Effective mime type of a snapshot document: stored value, else its extension. */
+function docMime(doc: any): string | null {
+  return doc?.mimeType || MIME_BY_EXT[path.extname(String(doc?.filePath || '')).toLowerCase()] || null;
+}
 
-/** Equivalent of Express `res.download(filePath, filename)`: attachment with the given name, 404 if the file is missing. */
-async function download(storedPath: string, filename: string) {
-  const abs = absoluteUploadPath(storedPath);
-  let data: Buffer;
-  try {
-    data = await readFile(abs);
-  } catch (err: any) {
-    return json({ error: err.message }, 404);
-  }
-  const name = path.basename(filename);
-  const ascii = name.replace(/[^\x20-\x7e]/g, '?');
-  let disposition = `attachment; filename="${ascii.replace(/([\\"])/g, '\\$1')}"`;
-  if (ascii !== name) {
-    disposition += `; filename*=UTF-8''${encodeURIComponent(name).replace(/['()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase())}`;
-  }
-  return new Response(new Uint8Array(data), {
-    headers: {
-      'Content-Type': DOWNLOAD_TYPES[path.extname(abs).toLowerCase()] || 'application/octet-stream',
-      'Content-Length': String(data.length),
-      'Content-Disposition': disposition,
-    },
-  });
+/**
+ * Serves a shared document. `inline` renders it in the browser (document
+ * preview) instead of downloading; see server/utils/fileResponse.
+ */
+async function download(storedPath: string, filename: string, inline = false, mimeType?: string | null) {
+  return fileResponse(storedPath, filename, { inline, mimeType });
 }
 
 /** Create one ProfileShare (validate → snapshot → persist → optional email).
@@ -467,17 +461,22 @@ export const mineDownloadDocument = handler<{ id: string; docId: string }>(async
   const doc = ((share.snapshotData as any)?.documents || []).find((d: any) => d.id === params.docId);
   if (!doc) return json({ error: 'Document not shared' }, 404);
 
+  // A preview is logged as VIEWED, an actual download as DOWNLOADED, so the
+  // audit trail still answers "did this company take a copy of the CV?".
+  const inline = wantsInline(req) && isViewableType(docMime(doc));
+  const eventType = inline ? 'VIEWED' : 'DOWNLOADED';
+
   await logEvent(share.id, {
-    eventType: 'DOWNLOADED',
+    eventType,
     actorType: 'CLIENT_USER',
     actorId: clientUser.id,
     actorName: clientUser.name,
-    metadata: { documentId: doc.id },
+    metadata: { documentId: doc.id, mode: inline ? 'inline' : 'download' },
   });
-  const status = nextStatus(share.status, 'DOWNLOADED');
+  const status = nextStatus(share.status, eventType);
   if (status !== share.status) await prisma.profileShare.update({ where: { id: share.id }, data: { status: status as any } });
 
-  return download(doc.filePath, doc.title);
+  return download(doc.filePath, doc.title, inline, doc.mimeType);
 });
 
 /** Application (CandidateJob) statuses a company SHORTLIST / REJECT, or scheduling an
@@ -647,15 +646,18 @@ export const publicDownloadDocument = handler<{ token: string; docId: string }>(
   const doc = ((share.snapshotData as any)?.documents || []).find((d: any) => d.id === params.docId);
   if (!doc) return json({ error: 'Document not shared' }, 404);
 
+  const inline = wantsInline(req) && isViewableType(docMime(doc));
+  const eventType = inline ? 'VIEWED' : 'DOWNLOADED';
+
   await logEvent(share.id, {
-    eventType: 'DOWNLOADED',
+    eventType,
     actorType: 'ANONYMOUS_TOKEN',
-    metadata: { documentId: doc.id, ip: clientIp(req), userAgent: userAgent(req) },
+    metadata: { documentId: doc.id, mode: inline ? 'inline' : 'download', ip: clientIp(req), userAgent: userAgent(req) },
   });
-  const status = nextStatus(share.status, 'DOWNLOADED');
+  const status = nextStatus(share.status, eventType);
   if (status !== share.status) await prisma.profileShare.update({ where: { id: share.id }, data: { status: status as any } });
 
-  return download(doc.filePath, doc.title);
+  return download(doc.filePath, doc.title, inline, doc.mimeType);
 });
 
 export const publicTracking = handler<{ token: string }>(async (req, { params }) => {

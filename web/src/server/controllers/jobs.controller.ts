@@ -163,6 +163,93 @@ export const createMine = handler(async (req) => {
   return json(job, 201);
 });
 
+/**
+ * Loads one of the calling company's own job requests for edit/withdraw.
+ *
+ * Scoped three ways, and all failures look identical (404) so a company can't
+ * probe for other companies' job ids:
+ *   - it must belong to this client
+ *   - it must be a COMPANY_REQUEST (staff-created job orders belong to Al Khadim)
+ *   - it must still be unpublished; once staff publish it, it is live and only
+ *     staff may change it
+ */
+async function findOwnJobRequest(id: string, clientId: string) {
+  const job = await prisma.job.findUnique({
+    where: { id },
+    select: {
+      id: true, clientId: true, source: true, isPublished: true, title: true,
+      _count: { select: { applications: true, interviews: true } },
+    },
+  });
+  if (!job || job.clientId !== clientId || job.source !== 'COMPANY_REQUEST') {
+    return { error: json({ error: 'Job request not found' }, 404) } as const;
+  }
+  if (job.isPublished) {
+    return {
+      error: json(
+        { error: 'This job order is already live. Contact Al Khadim staff to change or close it.' },
+        409,
+      ),
+    } as const;
+  }
+  return { job } as const;
+}
+
+/* ── Company portal: edit a job request that staff haven't published yet ── */
+export const updateMine = handler<{ id: string }>(async (req, { params }) => {
+  const { client } = await requireApprovedClient(req);
+  const { job, error } = await findOwnJobRequest(params.id, client.id);
+  if (error) return error;
+
+  // Same whitelist as submitting one, so a company can never set status,
+  // isPublished, clientId or filledCount through this route.
+  const data = jobData(await body(req), COMPANY_FIELDS, true);
+  if ('title' in data) data.title = String(data.title).trim();
+
+  try {
+    const updated = await prisma.job.update({
+      where: { id: job.id },
+      data,
+      include: CATEGORY_INDUSTRY_INCLUDE,
+    });
+    return json(updated);
+  } catch (err: any) {
+    if (err?.code === 'P2003') throw new HttpError(400, 'Invalid category or industry');
+    prismaError(err);
+  }
+});
+
+/* ── Company portal: withdraw a job request staff haven't published yet ── */
+export const removeMine = handler<{ id: string }>(async (req, { params }) => {
+  const { client, clientUser } = await requireApprovedClient(req);
+  const { job, error } = await findOwnJobRequest(params.id, client.id);
+  if (error) return error;
+
+  // Staff can attach candidates to an unpublished job, so this is reachable.
+  if (job._count.applications > 0 || job._count.interviews > 0) {
+    return json(
+      { error: 'Al Khadim has already started work on this request. Contact staff to cancel it.' },
+      409,
+    );
+  }
+
+  await prisma.job.delete({ where: { id: job.id } });
+
+  // Tell staff it's gone, mirroring the notification sent when it was raised.
+  prisma.user.findMany({ where: { role: { in: ['SUPER_ADMIN', 'ADMIN'] }, isActive: true }, select: { email: true } })
+    .then((admins) => Promise.all(admins.map((a) => sendTemplatedMail({
+      templateSlug: 'admin-new-job-request',
+      to: a.email,
+      data: {
+        companyName: client.companyName,
+        jobTitle: `${job.title} — WITHDRAWN by ${clientUser.name}`,
+      },
+    }).catch((e: any) => console.error('job withdraw admin notify failed', e)))))
+    .catch((e) => console.error('admin lookup failed', e));
+
+  return json({ message: 'Job request withdrawn' });
+});
+
 export const get = handler<{ id: string }>(async (req, { params }) => {
   await requirePermission(req, 'jobs', 'view');
   const job = await prisma.job.findUnique({

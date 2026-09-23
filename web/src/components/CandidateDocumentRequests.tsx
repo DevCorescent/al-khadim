@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCandidateAuth, candidateApi } from '@/lib/candidateAuth';
 import toast from 'react-hot-toast';
 import { FileText, Upload, CheckCircle2, XCircle, Clock, Download } from 'lucide-react';
+import { saveResponseAsFile } from '@/lib/fileDownload';
 
 const STATUS_STYLE: Record<string, { label: string; color: string; icon: any }> = {
   REQUESTED: { label: 'Upload needed', color: 'bg-amber-100 text-amber-700', icon: Clock },
@@ -43,13 +44,9 @@ export default function CandidateDocumentRequests() {
   });
 
   function download(id: string, title: string) {
-    candidateApi(accessToken!).get(`/api/candidate-auth/me/document-requests/${id}/download`, { responseType: 'blob' }).then((res) => {
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const a = document.createElement('a');
-      a.href = url; a.download = title;
-      document.body.appendChild(a); a.click(); a.remove();
-      window.URL.revokeObjectURL(url);
-    }).catch(() => toast.error('Download failed'));
+    candidateApi(accessToken!).get(`/api/candidate-auth/me/document-requests/${id}/download`, { responseType: 'blob' })
+      .then((res) => saveResponseAsFile(res, title))
+      .catch(() => toast.error('Download failed'));
   }
 
   if (isLoading || !requests || requests.length === 0) return null;
