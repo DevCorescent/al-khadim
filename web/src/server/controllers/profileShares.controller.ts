@@ -480,6 +480,14 @@ export const mineDownloadDocument = handler<{ id: string; docId: string }>(async
   return download(doc.filePath, doc.title);
 });
 
+/** Application (CandidateJob) statuses a company SHORTLIST / REJECT, or scheduling an
+ * interview from a share, must not overwrite (they would move the application backwards). */
+const APPLICATION_STAGES_KEPT_ON: Record<'SHORTLIST' | 'REJECT' | 'SCHEDULE_INTERVIEW', string[]> = {
+  SHORTLIST: ['INTERVIEW_SCHEDULED', 'INTERVIEWED', 'OFFERED', 'JOINED'],
+  REJECT: ['OFFERED', 'JOINED'],
+  SCHEDULE_INTERVIEW: ['OFFERED', 'JOINED'],
+};
+
 export const mineRespond = handler<{ id: string }>(async (req, { params }) => {
   const { client, clientUser } = await requireApprovedClient(req);
   const { action, reason, preferredAt, interviewerEmails } = await body(req);
@@ -539,11 +547,20 @@ export const mineRespond = handler<{ id: string }>(async (req, { params }) => {
       } as any,
     });
     if (action === 'SHORTLIST' || action === 'REJECT') {
-      await tx.candidateJob.upsert({
+      // Mirror the decision onto the application, but never move it backwards: once staff have
+      // taken it further (interview/offer/placement) that status stays. The share above still
+      // records the company's response and staff are notified below.
+      const current = await tx.candidateJob.findUnique({
         where: { candidateId_jobId: { candidateId: share.candidateId, jobId: share.jobId } },
-        update: { status: newStatus },
-        create: { candidateId: share.candidateId, jobId: share.jobId, status: newStatus },
+        select: { status: true },
       });
+      if (!current || !APPLICATION_STAGES_KEPT_ON[action].includes(current.status)) {
+        await tx.candidateJob.upsert({
+          where: { candidateId_jobId: { candidateId: share.candidateId, jobId: share.jobId } },
+          update: { status: newStatus },
+          create: { candidateId: share.candidateId, jobId: share.jobId, status: newStatus },
+        });
+      }
     }
   });
 
@@ -736,11 +753,19 @@ export const scheduleInterview = handler<{ id: string }>(async (req, { params })
         } as any,
       });
 
-      await tx.candidateJob.upsert({
+      // A further interview round is fine (e.g. INTERVIEWED → INTERVIEW_SCHEDULED), but an
+      // offered/placed application keeps its status; the interview itself is still created.
+      const currentApp = await tx.candidateJob.findUnique({
         where: { candidateId_jobId: { candidateId: share.candidateId, jobId: share.jobId } },
-        update: { status: 'INTERVIEW_SCHEDULED' },
-        create: { candidateId: share.candidateId, jobId: share.jobId, status: 'INTERVIEW_SCHEDULED' },
+        select: { status: true },
       });
+      if (!currentApp || !APPLICATION_STAGES_KEPT_ON.SCHEDULE_INTERVIEW.includes(currentApp.status)) {
+        await tx.candidateJob.upsert({
+          where: { candidateId_jobId: { candidateId: share.candidateId, jobId: share.jobId } },
+          update: { status: 'INTERVIEW_SCHEDULED' },
+          create: { candidateId: share.candidateId, jobId: share.jobId, status: 'INTERVIEW_SCHEDULED' },
+        });
+      }
 
       const newStatus = nextStatus(share.status, 'INTERVIEW_SCHEDULED');
       await tx.profileShare.update({ where: { id: share.id }, data: { status: newStatus as any } });

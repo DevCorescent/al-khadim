@@ -1,7 +1,7 @@
 // Ported from api/src/routes/clients.js
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@/generated/prisma/client';
-import { requirePermission } from '../permissions';
+import { hasPermission, requirePermission } from '../permissions';
 import { body, handler, HttpError, json, query } from '../http';
 import { escapeHtml, pagination, pickFields, scalarFields } from '../validate';
 import { sendTemplatedMail } from '../utils/templateRenderer';
@@ -34,8 +34,15 @@ function clientData(raw: any, partial: boolean) {
   return data;
 }
 
+/** Revenue/invoice figures are finance data: only for roles that can see invoices or finance
+ * (same rule as the reports overview and the dashboard). */
+async function canSeeRevenue(user: Parameters<typeof hasPermission>[0]) {
+  return await hasPermission(user, 'invoices', 'view') || await hasPermission(user, 'finance', 'view');
+}
+
 export const list = handler(async (req) => {
-  await requirePermission(req, 'clients', 'view');
+  const user = await requirePermission(req, 'clients', 'view');
+  const revenue = await canSeeRevenue(user);
   const q = query(req);
   const { search, isActive, industry, industryId, status } = q;
   const { page, limit, skip } = pagination(q, { defaultLimit: 20 });
@@ -58,7 +65,7 @@ export const list = handler(async (req) => {
       orderBy: { createdAt: 'desc' },
       include: {
         _count: { select: { jobs: true, followUps: true, invoices: true, enquiries: true } },
-        invoices: { select: { totalAmount: true, status: true } },
+        invoices: { select: { totalAmount: true, status: true }, ...(!revenue && { take: 0 }) },
         jobs: { select: { status: true } },
         industryRef: { select: INDUSTRY_SELECT },
       },
@@ -79,7 +86,8 @@ export const list = handler(async (req) => {
 
 /* Full client detail with all analytics */
 export const detail = handler<{ id: string }>(async (req, { params }) => {
-  await requirePermission(req, 'clients', 'view');
+  const user = await requirePermission(req, 'clients', 'view');
+  const revenue = await canSeeRevenue(user);
   try {
     const id = params.id;
 
@@ -101,6 +109,7 @@ export const detail = handler<{ id: string }>(async (req, { params }) => {
       prisma.invoice.findMany({
         where: { clientId: id },
         orderBy: { createdAt: 'desc' },
+        ...(!revenue && { take: 0 }),
       }),
       prisma.clientEnquiry.findMany({
         where: { clientId: id },

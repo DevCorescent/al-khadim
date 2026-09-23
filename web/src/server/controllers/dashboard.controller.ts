@@ -1,10 +1,13 @@
 // Ported from api/src/routes/dashboard.js
 import { prisma } from '@/lib/prisma';
-import { requirePermission } from '../permissions';
+import { hasPermission, requirePermission } from '../permissions';
 import { handler, json } from '../http';
 
 export const stats = handler(async (req) => {
-  await requirePermission(req, 'dashboard', 'view');
+  const user = await requirePermission(req, 'dashboard', 'view');
+  // Revenue figures are finance data: only for roles that can see invoices or finance
+  // (same rule as the reports overview).
+  const canSeeRevenue = await hasPermission(user, 'invoices', 'view') || await hasPermission(user, 'finance', 'view');
   const now       = new Date();
   const yearStart = new Date(now.getFullYear(), 0, 1);
   const monthStart= new Date(now.getFullYear(), now.getMonth(), 1);
@@ -53,12 +56,12 @@ export const stats = handler(async (req) => {
     (prisma.candidate.groupBy as any)({ by: ['status'], _count: { status: true } }),
     (prisma.job.groupBy as any)({ by: ['status'], _count: { status: true } }),
     // All invoices this year for revenue calc
-    prisma.invoice.findMany({
+    canSeeRevenue ? prisma.invoice.findMany({
       where: { docType: 'INVOICE', issueDate: { gte: yearStart, lt: nextYearStart } },
       select: { totalAmount: true, status: true, issueDate: true },
-    }),
-    prisma.invoice.count({ where: { docType: 'INVOICE', status: 'DRAFT' } }),
-    prisma.invoice.count({ where: { docType: 'INVOICE', status: 'OVERDUE' } }),
+    }) : Promise.resolve([] as { totalAmount: number; status: string; issueDate: Date }[]),
+    canSeeRevenue ? prisma.invoice.count({ where: { docType: 'INVOICE', status: 'DRAFT' } }) : Promise.resolve(0),
+    canSeeRevenue ? prisma.invoice.count({ where: { docType: 'INVOICE', status: 'OVERDUE' } }) : Promise.resolve(0),
   ]);
 
   // Revenue aggregates

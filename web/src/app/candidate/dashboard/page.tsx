@@ -131,7 +131,7 @@ export default function CandidateDashboard() {
               <Briefcase size={28} className="text-gray-300 mx-auto mb-3" />
               <p className="text-sm font-semibold text-gray-700 mb-1">No applications yet</p>
               <p className="text-xs text-gray-400 mb-4">Browse open positions and apply</p>
-              <Link href="/careers" className="btn-primary text-xs py-2 px-4">Browse Jobs →</Link>
+              <Link href="/candidate/find-jobs" className="btn-primary text-xs py-2 px-4">Browse Jobs →</Link>
             </div>
           ) : (
             <div className="space-y-2">
@@ -227,7 +227,7 @@ export default function CandidateDashboard() {
               <Link href="/candidate/profile" className="flex items-center gap-2.5 text-sm text-gray-700 hover:text-primary-500 py-2 border-b border-gray-50 transition-colors">
                 <User size={14} className="text-gray-400" /> Edit Profile
               </Link>
-              <Link href="/careers" className="flex items-center gap-2.5 text-sm text-gray-700 hover:text-primary-500 py-2 border-b border-gray-50 transition-colors">
+              <Link href="/candidate/find-jobs" className="flex items-center gap-2.5 text-sm text-gray-700 hover:text-primary-500 py-2 border-b border-gray-50 transition-colors">
                 <Briefcase size={14} className="text-gray-400" /> Browse Jobs
               </Link>
               <Link href="/candidates" className="flex items-center gap-2.5 text-sm text-gray-700 hover:text-primary-500 py-2 transition-colors">

@@ -349,6 +349,7 @@ export default function CandidateDetailPage() {
                 <div className="space-y-2 text-sm">
                   {[
                     ['Nationality', c.nationality],
+                    ['Visa Status', c.visaStatus],
                     ['Experience', c.experience ? `${c.experience} yrs` : null],
                     ['Current Salary', c.currentSalary ? `AED ${c.currentSalary.toLocaleString()}` : null],
                     ['Expected Salary', c.expectedSalary ? `AED ${c.expectedSalary.toLocaleString()}` : null],

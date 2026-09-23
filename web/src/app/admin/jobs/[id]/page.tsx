@@ -3,12 +3,16 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { useCan } from '@/lib/auth';
+import Modal from '@/components/admin/Modal';
+import ShareProfileModal from '@/components/admin/ShareProfileModal';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import {
   ArrowLeft, ChevronRight, Briefcase, MapPin, DollarSign, Users,
   Calendar, Clock, CheckCircle2, Circle, Building2, Phone, Mail,
   User, Award, FileText, Edit2, Trash2, Target, Eye, EyeOff, Send,
+  UserPlus, Search, Share2,
 } from 'lucide-react';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -54,6 +58,9 @@ export default function JobDetailPage() {
   const [tab, setTab] = useState('Overview');
   const [statusEdit, setStatusEdit] = useState(false);
   const [newStatus, setNewStatus] = useState('');
+  const [addOpen, setAddOpen] = useState(false);
+  const [shareCandidate, setShareCandidate] = useState<any>(null);
+  const can = useCan();
 
   const { data: job, isLoading, error } = useQuery({
     queryKey: ['job', id],
@@ -71,6 +78,16 @@ export default function JobDetailPage() {
       api.put(`/jobs/applications/${appId}`, { status }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['job', id] }); toast.success('Updated'); },
     onError: () => toast.error('Update failed'),
+  });
+
+  // POST /candidates/:id/apply creates the CandidateJob (409 if already assigned).
+  const addApplicant = useMutation({
+    mutationFn: (candidateId: string) => api.post(`/candidates/${candidateId}/apply`, { jobId: id }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['job', id] }); toast.success('Applicant added'); setAddOpen(false); },
+    // Show the server's message for client errors (e.g. 409 "already assigned"); 5xx may carry internals.
+    onError: (e: any) => toast.error(
+      (e.response?.status < 500 && e.response?.data?.error) || 'Failed to add applicant',
+    ),
   });
 
   const togglePublish = useMutation({
@@ -296,6 +313,13 @@ export default function JobDetailPage() {
         {/* APPLICANTS */}
         {tab === 'Applicants' && (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            {can('candidates', 'edit') && (
+              <div className="flex justify-end px-4 py-3 border-b border-gray-100">
+                <button onClick={() => setAddOpen(true)} className="btn-primary text-sm py-2 flex items-center gap-1.5">
+                  <UserPlus size={15} /> Add applicant
+                </button>
+              </div>
+            )}
             {applications.length === 0 ? (
               <div className="text-center py-14 text-gray-400">
                 <Users size={32} className="mx-auto mb-3 opacity-30" />
@@ -343,6 +367,13 @@ export default function JobDetailPage() {
                             <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
                           ))}
                         </select>
+                        {/* POST /profile-shares requires candidates:edit */}
+                        {app.candidate && can('candidates', 'edit') && (
+                          <button onClick={() => setShareCandidate(app.candidate)}
+                            className="ml-2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 hover:underline">
+                            <Share2 size={12} /> Share with Company
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -350,6 +381,20 @@ export default function JobDetailPage() {
               </table>
             )}
           </div>
+        )}
+
+        <Modal isOpen={addOpen} onClose={() => setAddOpen(false)} title="Add applicant">
+          <AddApplicantForm
+            assignedIds={applications.map((a: any) => a.candidateId)}
+            saving={addApplicant.isPending}
+            onSubmit={candidateId => addApplicant.mutate(candidateId)}
+          />
+        </Modal>
+
+        {/* Company/job come from this job order, not user input; the server re-checks the job belongs to the company. */}
+        {shareCandidate && (
+          <ShareProfileModal key={shareCandidate.id} isOpen onClose={() => setShareCandidate(null)}
+            candidate={shareCandidate} initialClientId={job.clientId} initialJobId={job.id} />
         )}
 
         {/* INTERVIEWS */}
@@ -435,5 +480,57 @@ export default function JobDetailPage() {
         )}
       </div>
     </div>
+  );
+}
+
+/** Candidate picker for "Add applicant"; candidates already on this job are shown but can't be picked. */
+function AddApplicantForm({ assignedIds, saving, onSubmit }: {
+  assignedIds: string[];
+  saving: boolean;
+  onSubmit: (candidateId: string) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['candidates', 'picker', search],
+    queryFn: () => api.get('/candidates', { params: { limit: 20, search } }).then(r => r.data),
+  });
+  const candidates: any[] = data?.data || [];
+
+  return (
+    <form onSubmit={e => { e.preventDefault(); if (selected) onSubmit(selected); }} className="space-y-4">
+      <div className="relative">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name, email, phone or CV ID…" className="input pl-9" />
+      </div>
+
+      <div className="border border-gray-100 rounded-xl divide-y divide-gray-50 max-h-72 overflow-y-auto">
+        {isLoading ? (
+          <p className="text-center py-8 text-sm text-gray-400">Loading candidates…</p>
+        ) : candidates.length === 0 ? (
+          <p className="text-center py-8 text-sm text-gray-400">No candidates found</p>
+        ) : candidates.map(c => {
+          const assigned = assignedIds.includes(c.id);
+          return (
+            <label key={c.id}
+              className={`flex items-center gap-3 px-3 py-2.5 ${assigned ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50'}`}>
+              <input type="radio" name="candidate" value={c.id} disabled={assigned}
+                checked={selected === c.id} onChange={() => setSelected(c.id)} />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-gray-800 truncate">{c.firstName} {c.lastName}</p>
+                <p className="text-[11px] text-gray-400 truncate">{[c.cvId, c.email].filter(Boolean).join(' · ')}</p>
+              </div>
+              {assigned && <span className="text-[10px] font-bold text-gray-400 shrink-0">Already added</span>}
+            </label>
+          );
+        })}
+      </div>
+
+      <button type="submit" disabled={!selected || saving} className="btn-primary w-full text-sm py-2 disabled:opacity-50">
+        {saving ? 'Adding…' : 'Add applicant'}
+      </button>
+    </form>
   );
 }

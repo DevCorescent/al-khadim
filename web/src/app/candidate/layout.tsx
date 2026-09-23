@@ -4,12 +4,13 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useCandidateAuth } from '@/lib/candidateAuth';
 import {
-  LayoutDashboard, User, Briefcase, FileText, LogOut, ChevronRight, Share2, ClipboardList
+  LayoutDashboard, User, Briefcase, FileText, LogOut, ChevronRight, Share2, ClipboardList, Search
 } from 'lucide-react';
 
 const nav = [
   { href: '/candidate/dashboard',   icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/candidate/profile',     icon: User,             label: 'My Profile' },
+  { href: '/candidate/find-jobs',   icon: Search,           label: 'Find Jobs' },
   { href: '/candidate/jobs',        icon: Briefcase,        label: 'My Applications' },
   { href: '/candidate/shared-with', icon: Share2,           label: 'Shared With' },
   { href: '/candidate/tracking',    icon: ClipboardList,    label: 'My Tracking' },

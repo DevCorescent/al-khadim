@@ -13,12 +13,15 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   candidate: any;
+  /** Pre-selected company/job (e.g. when sharing from a job's applicant list). Still editable. */
+  initialClientId?: string;
+  initialJobId?: string;
 }
 
-export default function ShareProfileModal({ isOpen, onClose, candidate }: Props) {
+export default function ShareProfileModal({ isOpen, onClose, candidate, initialClientId = '', initialJobId = '' }: Props) {
   const qc = useQueryClient();
-  const [clientId, setClientId] = useState('');
-  const [jobId, setJobId] = useState('');
+  const [clientId, setClientId] = useState(initialClientId);
+  const [jobId, setJobId] = useState(initialJobId);
   const [method, setMethod] = useState<'PORTAL' | 'EMAIL' | 'BOTH'>('BOTH');
   const [message, setMessage] = useState('');
   const [fields, setFields] = useState<string[]>([]);
@@ -59,7 +62,7 @@ export default function ShareProfileModal({ isOpen, onClose, candidate }: Props)
   });
 
   function reset() {
-    setClientId(''); setJobId(''); setMethod('BOTH'); setMessage(''); setFields([]); setDocIds([]); setShowPreview(false);
+    setClientId(initialClientId); setJobId(initialJobId); setMethod('BOTH'); setMessage(''); setFields([]); setDocIds([]); setShowPreview(false);
   }
 
   const selectedJob = (jobs || []).find((j: any) => j.id === jobId);

@@ -109,6 +109,8 @@ export const listPublic = handler(async (req) => {
     where: { status: 'OPEN', isPublished: true },
     orderBy: { createdAt: 'desc' },
     include: { client: { select: { companyName: true, country: true } } },
+    // Internal account ids (company requester / publishing staff user) are not public.
+    omit: { requestedByClientUserId: true, publishedByUserId: true },
     take: limit,
   });
   return json(jobs);

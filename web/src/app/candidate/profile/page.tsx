@@ -66,8 +66,15 @@ export default function CandidateProfilePage() {
     mutationFn: async () => {
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => {
-        if (Array.isArray(v)) v.forEach(i => fd.append(k, i));
-        else if (v !== '' && v !== null && v !== undefined) fd.append(k, String(v));
+        // A field the candidate emptied is sent as '' so the server clears it; fields that
+        // were already empty stay unsent, so saving doesn't rewrite them.
+        const prev = profile?.[k];
+        const had = Array.isArray(prev) ? prev.length > 0 : prev !== null && prev !== undefined && prev !== '';
+        if (Array.isArray(v)) {
+          if (v.length) v.forEach(i => fd.append(k, i));
+          else if (had) fd.append(k, '');
+        } else if (v !== '' && v !== null && v !== undefined) fd.append(k, String(v));
+        else if (had) fd.append(k, '');
       });
       if (photoFile) fd.append('photo', photoFile);
       if (cvFile)    fd.append('cv', cvFile);
@@ -272,7 +279,8 @@ export default function CandidateProfilePage() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-blue-800">Current CV uploaded</p>
-              <p className="text-xs text-blue-500 truncate">{profile.cvPath.split('/').pop()}</p>
+              <a href={`${API}/${profile.cvPath}`} target="_blank" rel="noopener noreferrer"
+                className="text-xs text-blue-500 truncate block hover:underline">{profile.cvPath.split('/').pop()}</a>
             </div>
           </div>
         )}

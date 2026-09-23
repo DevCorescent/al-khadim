@@ -243,15 +243,18 @@ export const updateMe = handler(async (req) => {
 
     if (files?.cv)    data.cvPath = files.cv[0].path;
     if (files?.photo) data.photo  = files.photo[0].path;
-    if (skills)      data.skills    = toList(skills);
-    if (languages)   data.languages = toList(languages);
+    // An empty value (sent when the candidate clears a field) clears it.
+    if (skills !== undefined)    data.skills    = toList(skills);
+    if (languages !== undefined) data.languages = toList(languages);
     for (const [key, raw] of [['currentSalary', currentSalary], ['expectedSalary', expectedSalary]] as const) {
-      if (raw === undefined || raw === '') continue;
+      if (raw === undefined) continue;
+      if (raw === '') { data[key] = null; continue; }
       const n = parseFloat(raw);
       if (!Number.isFinite(n) || n < 0) return json({ error: `${key} must be a number` }, 400);
       data[key] = n;
     }
-    if (experience !== undefined && experience !== '') {
+    if (experience === '') data.experience = null;
+    else if (experience !== undefined) {
       const n = parseInt(experience, 10);
       if (!Number.isFinite(n) || n < 0) return json({ error: 'experience must be a number' }, 400);
       data.experience = n;
@@ -308,6 +311,30 @@ export const editHistory = handler(async (req) => {
     take: 50,
   });
   return json(history);
+});
+
+/* ── Apply to a job as myself. The candidate always comes from the session, never the body. ── */
+export const apply = handler(async (req) => {
+  const { candidate } = await requireCandidate(req);
+  const { jobId } = await body(req);
+  if (!jobId || typeof jobId !== 'string') return json({ error: 'jobId is required' }, 400);
+
+  // Same rule as the public job list (jobs.controller listPublic): only open, published jobs.
+  // Unpublished jobs get the same 404 as missing ones so they aren't revealed.
+  const job = await prisma.job.findUnique({ where: { id: jobId }, select: { status: true, isPublished: true } });
+  if (!job || !job.isPublished) return json({ error: 'Job not found' }, 404);
+  if (job.status !== 'OPEN') return json({ error: 'This job is no longer accepting applications' }, 400);
+
+  try {
+    const application = await prisma.candidateJob.create({
+      data: { candidateId: candidate.id, jobId },
+      include: { job: { include: { client: { select: { companyName: true } } } } },
+    });
+    return json(application, 201);
+  } catch (err: any) {
+    if (err?.code === 'P2002') return json({ error: 'You have already applied to this job' }, 409);
+    throw err;
+  }
 });
 
 /* ── Shared With: which companies my profile has been shared with ── */

@@ -81,7 +81,7 @@ export default function CandidateJobsPage() {
           <p className="text-xs text-gray-400 mb-5">
             {search ? 'Try a different keyword' : 'Start applying to open positions'}
           </p>
-          <Link href="/careers" className="btn-primary text-sm py-2.5 px-5">Browse Jobs <ArrowRight size={14} /></Link>
+          <Link href="/candidate/find-jobs" className="btn-primary text-sm py-2.5 px-5">Browse Jobs <ArrowRight size={14} /></Link>
         </div>
       )}
 
@@ -152,7 +152,7 @@ export default function CandidateJobsPage() {
       {filtered.length > 0 && (
         <p className="text-center text-xs text-gray-400 mt-6">
           Showing {filtered.length} of {apps.length} applications ·{' '}
-          <Link href="/careers" className="text-primary-500 hover:underline">Browse more jobs →</Link>
+          <Link href="/candidate/find-jobs" className="text-primary-500 hover:underline">Browse more jobs →</Link>
         </p>
       )}
     </div>

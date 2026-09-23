@@ -153,6 +153,17 @@ export const update = handler<{ id: string }>(async (req, { params }) => {
   if (target.id === me.id) {
     if (data.isActive === false) return json({ error: 'Cannot deactivate your own account' }, 400);
     if (data.role !== undefined && data.role !== me.role) return json({ error: 'Cannot change your own role' }, 400);
+    // Custom role and per-user permissions decide access just like the role, so they are
+    // protected the same way (unchanged values, as the edit form resends them, are fine).
+    if (data.customRole !== undefined && data.customRole !== (me.customRole ?? null)) {
+      return json({ error: 'Cannot change your own custom role' }, 400);
+    }
+    if (data.permissions !== undefined) {
+      const next = data.permissions === Prisma.DbNull ? null : data.permissions;
+      if (JSON.stringify(next) !== JSON.stringify(me.permissions ?? null)) {
+        return json({ error: 'Cannot change your own permissions' }, 400);
+      }
+    }
   }
   const willBeRole = data.role ?? target.role;
   const willBeActive = data.isActive ?? target.isActive;
