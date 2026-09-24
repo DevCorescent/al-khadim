@@ -205,7 +205,9 @@ export const uploadImage = handler(async (req) => {
     await unlink(absoluteUploadPath(file.path)).catch(() => {});
     return json({ error: 'Only image files can be uploaded here' }, 400);
   }
-  const protocol = req.nextUrl.protocol.replace(/:$/, '');
-  const url = `${protocol}://${req.headers.get('host')}/${file.path}`;
+  // Root-relative, deliberately: an absolute URL bakes in whichever host did
+  // the upload, so a value saved on a dev machine breaks everywhere else.
+  // lib/mediaUrl.ts normalises the absolute values older rows still hold.
+  const url = `/${file.path}`;
   return json({ url, path: file.path });
 });

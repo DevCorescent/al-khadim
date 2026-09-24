@@ -16,8 +16,39 @@
 import OpenAI from 'openai';
 import { prisma } from '@/lib/prisma';
 
-export const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 export const ALLOWED_MODELS = ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-3.5-turbo'];
+
+/**
+ * Providers that speak the OpenAI chat-completions protocol, so switching
+ * between them needs only a name and a key rather than a remembered URL.
+ * `AI_PROVIDER=gemini` is the free-tier option (Google AI Studio); an explicit
+ * OPENAI_BASE_URL still wins, for anything not listed here.
+ */
+const PROVIDER_PRESETS: Record<string, { baseUrl: string; model: string }> = {
+  openai: { baseUrl: '',                                                         model: 'gpt-4o-mini' },
+  // gemini-2.5-flash is closed to new projects and gemini-flash-latest returns
+  // 503 under load, so the preset names a specific current model. Verified
+  // against the API: it accepts strict json_schema.
+  gemini: { baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/', model: 'gemini-3.6-flash' },
+  groq:   { baseUrl: 'https://api.groq.com/openai/v1',                           model: 'llama-3.3-70b-versatile' },
+};
+
+function preset() {
+  return PROVIDER_PRESETS[(process.env.AI_PROVIDER || '').trim().toLowerCase()];
+}
+
+/** Endpoint to talk to. An explicit OPENAI_BASE_URL overrides the preset. */
+export function providerBaseUrl(): string | undefined {
+  return process.env.OPENAI_BASE_URL?.trim() || preset()?.baseUrl || undefined;
+}
+
+/** Model to use when nothing more specific is configured. */
+export function defaultModel(): string {
+  return process.env.OPENAI_MODEL?.trim() || preset()?.model || 'gpt-4o-mini';
+}
+
+/** Read once at import for the admin settings UI; request paths use defaultModel(). */
+export const DEFAULT_MODEL = defaultModel();
 
 const DEFAULTS = {
   provider: 'openai',
@@ -95,12 +126,12 @@ export function resolveConfig(settings: any): AiConfig | null {
       apiKey: settings.apiKey,
       // A custom endpoint is env-only: it changes who receives the data, so it
       // is not something the admin UI can repoint.
-      baseUrl: process.env.OPENAI_BASE_URL || undefined,
+      baseUrl: providerBaseUrl(),
       // The model allowlist only applies to OpenAI itself — a compatible
       // provider has its own model names.
-      model: process.env.OPENAI_BASE_URL
-        ? (settings.model || DEFAULT_MODEL)
-        : (ALLOWED_MODELS.includes(settings.model) ? settings.model : DEFAULT_MODEL),
+      model: providerBaseUrl()
+        ? (settings.model || defaultModel())
+        : (ALLOWED_MODELS.includes(settings.model) ? settings.model : defaultModel()),
       temperature: settings.temperature != null ? Number(settings.temperature) : DEFAULTS.temperature,
       maxTokens: settings.maxTokens != null ? Number(settings.maxTokens) : DEFAULTS.maxTokens,
       publicEnabled: !!settings.publicEnabled,
@@ -112,8 +143,8 @@ export function resolveConfig(settings: any): AiConfig | null {
   if (process.env.OPENAI_API_KEY) {
     return {
       apiKey: process.env.OPENAI_API_KEY,
-      baseUrl: process.env.OPENAI_BASE_URL || undefined,
-      model: DEFAULT_MODEL,
+      baseUrl: providerBaseUrl(),
+      model: defaultModel(),
       temperature: DEFAULTS.temperature,
       maxTokens: DEFAULTS.maxTokens,
       publicEnabled: process.env.OPENAI_PUBLIC_ENABLED === 'true',

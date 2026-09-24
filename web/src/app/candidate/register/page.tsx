@@ -33,6 +33,17 @@ type ParsedCV = {
   linkedIn?: string;
 };
 
+/**
+ * What /parse-cv returns: the CV's own fields, plus a nationality *suggested*
+ * from the location. Kept out of ParsedCV (and so out of FormState) because it
+ * is a guess, not something the CV said.
+ */
+type ParseResponse = ParsedCV & {
+  _error?: string;
+  nationalityGuess?: string;
+  nationalityGuessFrom?: string;
+};
+
 type FormState = ParsedCV & {
   password: string;
   confirmPassword: string;
@@ -54,7 +65,9 @@ export default function CandidateRegisterPage() {
   const [parsing, setParsing]     = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm]           = useState<FormState>(INITIAL_FORM);
-  const [parsedRaw, setParsedRaw] = useState<ParsedCV | null>(null);
+  const [parsedRaw, setParsedRaw] = useState<ParseResponse | null>(null);
+  /** Set while the nationality field holds a guess the person hasn't confirmed. */
+  const [nationalityGuess, setNationalityGuess] = useState<{ value: string; from: string } | null>(null);
   const [ticket, setTicket]         = useState<string | null>(null);
   const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null);
 
@@ -69,8 +82,13 @@ export default function CandidateRegisterPage() {
       const fd = new FormData();
       fd.append('cv', file);
       const { data } = await axios.post(`${API}/api/candidate-auth/parse-cv`, fd);
-      const p: ParsedCV & { _error?: string } = data.parsed ?? {};
+      const p: ParseResponse = data.parsed ?? {};
       setParsedRaw(p);
+
+      // A nationality guessed from the location is pre-selected but flagged,
+      // so it is never silently saved as if the CV had stated it.
+      const guessed = !p.nationality && p.nationalityGuess ? p.nationalityGuess : '';
+      setNationalityGuess(guessed ? { value: guessed, from: p.nationalityGuessFrom || '' } : null);
 
       if (p._error) {
         toast.error(p._error, { duration: 6000 });
@@ -85,7 +103,7 @@ export default function CandidateRegisterPage() {
         lastName:        p.lastName        || prev.lastName,
         email:           p.email           || prev.email,
         phone:           p.phone           || prev.phone,
-        nationality:     p.nationality     || prev.nationality,
+        nationality:     p.nationality     || guessed || prev.nationality,
         currentLocation: p.currentLocation || prev.currentLocation,
         experience:      p.experience      ?? prev.experience,
         skills:          p.skills?.length  ? p.skills : prev.skills,
@@ -238,7 +256,9 @@ export default function CandidateRegisterPage() {
                 p.email && `Email: ${p.email}`,
                 p.phone && `Phone: ${p.phone}`,
                 p.experience && `${p.experience} yrs exp`,
-                p.nationality && p.nationality,
+                p.nationality && `Nationality: ${p.nationality}`,
+                // Labelled as a guess, so the banner never claims the CV said it.
+                !p.nationality && nationalityGuess && `Nationality: ${nationalityGuess.value} (guessed)`,
                 p.currentLocation && p.currentLocation,
                 (p.skills?.length ?? 0) > 0 && `${p.skills!.length} skills`,
                 (p.languages?.length ?? 0) > 0 && `${p.languages!.length} languages`,
@@ -298,12 +318,24 @@ export default function CandidateRegisterPage() {
                     <SearchSelect
                       id="nationality"
                       value={form.nationality || ''}
-                      onChange={v => setField('nationality', v)}
+                      onChange={v => { setField('nationality', v); setNationalityGuess(null); }}
                       options={NATIONALITIES}
                       placeholder="Select nationality"
                       searchPlaceholder="Search nationality…"
                       allowCustom
                     />
+                    {/* Shown only while the value is still our guess. Your CV
+                        didn't state a nationality, so this came from the
+                        location and has to be confirmed. */}
+                    {nationalityGuess && form.nationality === nationalityGuess.value && (
+                      <p className="flex items-start gap-1.5 mt-1.5 text-[11px] text-amber-600">
+                        <AlertCircle size={12} className="shrink-0 mt-0.5" />
+                        <span>
+                          Guessed from <span className="font-semibold">{nationalityGuess.from}</span> — your CV
+                          didn&apos;t state a nationality. Please confirm or change it.
+                        </span>
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="label" htmlFor="currentLocation">Current Location</label>

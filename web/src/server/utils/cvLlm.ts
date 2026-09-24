@@ -19,10 +19,46 @@
  * CV_AI_PARSING=true is set explicitly — having an API key for the chat
  * assistant is deliberately not enough to turn it on.
  */
-import { getClient } from './aiClient';
+import { getClient, providerBaseUrl } from './aiClient';
 
 /** Models that support Structured Outputs (`response_format: json_schema`). */
 const JSON_SCHEMA_MODELS = ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4.1-mini'];
+
+/**
+ * Latches once a provider has rejected a strict schema (Gemini's compatibility
+ * layer does), so subsequent uploads go straight to `json_object` instead of
+ * paying for a failed request first. Process-lifetime only, and reset by a
+ * restart, which is when the provider could have changed anyway.
+ */
+let schemaUnsupported = false;
+
+/**
+ * Gemini's flash models return 503 "experiencing high demand" intermittently,
+ * which would silently drop every affected upload back to the regex parser.
+ * A short retry clears most of it; a lighter second model clears the rest,
+ * since the smaller models are less contended.
+ */
+const RETRY_DELAY_MS = 700;
+const FALLBACK_BY_PREFIX: Record<string, string> = { gemini: 'gemini-3.5-flash-lite' };
+
+function fallbackModel(primary: string): string | null {
+  if (process.env.CV_AI_FALLBACK_MODEL !== undefined) {
+    return process.env.CV_AI_FALLBACK_MODEL.trim() || null;
+  }
+  for (const [prefix, model] of Object.entries(FALLBACK_BY_PREFIX)) {
+    if (primary.startsWith(prefix) && primary !== model) return model;
+  }
+  return null;
+}
+
+/** Busy or rate-limited, rather than misconfigured — worth trying again. */
+function isTransient(err: any): boolean {
+  const status = err?.status ?? err?.response?.status;
+  return status === 429 || status === 500 || status === 502 || status === 503 || status === 504
+    || err?.code === 'ETIMEDOUT' || err?.name === 'APIConnectionTimeoutError';
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const FALLBACK_MODEL = 'gpt-4o-mini';
 
 const DEFAULT_TIMEOUT_MS = 20_000;
@@ -107,9 +143,9 @@ const SHAPE_PROMPT = [
 
 function pickModel(configured: string): string {
   if (process.env.CV_AI_MODEL) return process.env.CV_AI_MODEL;
-  // Against a compatible provider (Groq, Gemini, OpenRouter…) the model names
+  // Against a compatible provider (Gemini, Groq, OpenRouter…) the model names
   // are theirs, so never substitute an OpenAI one.
-  if (process.env.OPENAI_BASE_URL) return configured;
+  if (providerBaseUrl()) return configured;
   return JSON_SCHEMA_MODELS.includes(configured) ? configured : FALLBACK_MODEL;
 }
 
@@ -196,10 +232,18 @@ export async function parseCvWithLlm(text: string): Promise<LlmParsedCV | null> 
   const model = pickModel(ai.model);
   const body = text.length > MAX_CHARS ? text.slice(0, MAX_CHARS) : text;
 
-  const ask = (mode: 'json_schema' | 'json_object') =>
+  // CV_AI_TIMEOUT_MS is the budget for the whole attempt chain, not per call —
+  // otherwise a retry plus a fallback model could hold the upload for three
+  // times the configured timeout.
+  const deadline = Date.now() + timeoutMs();
+  const remaining = () => deadline - Date.now();
+  /** Below this there isn't time for another round trip to be worth it. */
+  const MIN_ATTEMPT_MS = 3_000;
+
+  const ask = (mode: 'json_schema' | 'json_object', useModel: string = model) =>
     ai.client!.chat.completions.create(
       {
-        model,
+        model: useModel,
         // Extraction, not creativity.
         temperature: 0,
         messages: [
@@ -216,19 +260,29 @@ export async function parseCvWithLlm(text: string): Promise<LlmParsedCV | null> 
             ? { type: 'json_schema', json_schema: { name: 'cv_fields', strict: true, schema: SCHEMA as any } }
             : { type: 'json_object' },
       },
-      { timeout: timeoutMs() },
+      {
+        timeout: Math.max(MIN_ATTEMPT_MS, remaining()),
+        // The SDK retries 5xx twice by default with its own backoff, which
+        // stacks under the retry layer below and blows the budget (measured:
+        // 24.7s against a 20s setting). One HTTP call per attempt, retried
+        // explicitly, keeps the whole chain inside `deadline`.
+        maxRetries: 0,
+      },
     );
 
   const started = Date.now();
   let res;
-  let mode: 'json_schema' | 'json_object' = 'json_schema';
+  let usedModel = model;
+  let mode: 'json_schema' | 'json_object' = schemaUnsupported ? 'json_object' : 'json_schema';
   try {
     res = await ask(mode);
   } catch (err: any) {
     // Many OpenAI-compatible providers accept `json_object` but not strict
     // `json_schema`. Retry once in the simpler mode before giving up.
-    if (looksLikeUnsupportedSchema(err)) {
+    if (mode === 'json_schema' && looksLikeUnsupportedSchema(err)) {
       console.warn('[cvLlm] provider rejected json_schema, retrying as json_object');
+      // Remember it, so later uploads don't pay for the failed attempt again.
+      schemaUnsupported = true;
       mode = 'json_object';
       try {
         res = await ask(mode);
@@ -236,8 +290,30 @@ export async function parseCvWithLlm(text: string): Promise<LlmParsedCV | null> 
         console.warn('[cvLlm] parse failed, falling back to regex:', err2?.message);
         return null;
       }
+    } else if (isTransient(err) && remaining() > MIN_ATTEMPT_MS + RETRY_DELAY_MS) {
+      // Busy, not broken. Same model once after a pause, then a lighter model,
+      // then give up to the regex parser — all inside the one budget.
+      console.warn(`[cvLlm] ${model} busy (${err?.status}), retrying`);
+      await sleep(RETRY_DELAY_MS);
+      try {
+        res = await ask(mode);
+      } catch (err2: any) {
+        const alt = isTransient(err2) && remaining() > MIN_ATTEMPT_MS ? fallbackModel(model) : null;
+        if (!alt) {
+          console.warn('[cvLlm] parse failed, falling back to regex:', err2?.message);
+          return null;
+        }
+        console.warn(`[cvLlm] still busy, trying ${alt}`);
+        try {
+          res = await ask(mode, alt);
+          usedModel = alt;
+        } catch (err3: any) {
+          console.warn('[cvLlm] parse failed, falling back to regex:', err3?.message);
+          return null;
+        }
+      }
     } else {
-      // Bad key, rate limit, timeout — degrade to the regex parser rather than
+      // Bad key, bad model name — degrade to the regex parser rather than
       // failing the upload.
       console.warn('[cvLlm] parse failed, falling back to regex:', err?.message);
       return null;
@@ -250,9 +326,9 @@ export async function parseCvWithLlm(text: string): Promise<LlmParsedCV | null> 
       console.warn('[cvLlm] empty completion');
       return null;
     }
-    const parsed = normalise(JSON.parse(content));
+    const parsed = normalise(JSON.parse(stripFence(content)));
     console.log(
-      `[cvLlm] ${model} (${mode}) parsed in ${Date.now() - started}ms`,
+      `[cvLlm] ${usedModel} (${mode}) parsed in ${Date.now() - started}ms`,
       { tokens: res.usage?.total_tokens, name: `${parsed.firstName ?? ''} ${parsed.lastName ?? ''}`.trim(), skills: parsed.skills.length, languages: parsed.languages.length },
     );
     return parsed;
@@ -262,10 +338,29 @@ export async function parseCvWithLlm(text: string): Promise<LlmParsedCV | null> 
   }
 }
 
-/** A 4xx complaining about response_format / json_schema, rather than auth or rate limits. */
+/**
+ * A 4xx complaining about response_format / json_schema, rather than auth or
+ * rate limits. Gemini's compatibility layer accepts `json_object` but rejects
+ * parts of a strict schema (`additionalProperties`, nullable type unions) with
+ * a "Unknown name" or "Invalid JSON payload" message, so those count too.
+ */
 function looksLikeUnsupportedSchema(err: any): boolean {
   const status = err?.status ?? err?.response?.status;
   if (status && status !== 400 && status !== 404 && status !== 422) return false;
   const msg = String(err?.message ?? '').toLowerCase();
-  return /json_schema|response_format|structured output|schema/.test(msg);
+  return /json_schema|response_format|structured output|schema|additionalproperties|invalid json payload|unknown name|not supported|unsupported/.test(msg);
+}
+
+/**
+ * Some providers wrap JSON in a markdown fence even when asked not to, which
+ * JSON.parse will not accept. Take the outermost object if one is there.
+ */
+export function stripFence(content: string): string {
+  const trimmed = content.trim();
+  if (trimmed.startsWith('{')) return trimmed;
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]?.trim().startsWith('{')) return fenced[1].trim();
+  const first = trimmed.indexOf('{');
+  const last = trimmed.lastIndexOf('}');
+  return first !== -1 && last > first ? trimmed.slice(first, last + 1) : trimmed;
 }

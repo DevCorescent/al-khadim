@@ -21,6 +21,7 @@ import {
   type ParsedCV,
 } from './cvParser';
 import { isCvAiEnabled, parseCvWithLlm, type LlmParsedCV } from './cvLlm';
+import { demonymForLocation } from '@/lib/formOptions';
 
 /** How each field was resolved — logged, and surfaced for debugging. */
 export interface CvParseMeta {
@@ -31,10 +32,32 @@ export interface CvParseMeta {
   fieldsFromLlm: string[];
 }
 
-export type ExtractedCV = ParsedCV & { _meta?: CvParseMeta };
+export type ExtractedCV = ParsedCV & {
+  _meta?: CvParseMeta;
+  /**
+   * A *suggested* nationality derived from the parsed location — never an
+   * extracted one. Kept in its own field so nothing can mistake a guess for
+   * something the CV actually said: the form pre-selects it and asks the person
+   * to confirm, and it is not what gets saved unless they do.
+   */
+  nationalityGuess?: string;
+  /** The location the guess came from, so the form can say where it got it. */
+  nationalityGuessFrom?: string;
+};
 
 const isBlank = (v: unknown): boolean =>
   v === null || v === undefined || (typeof v === 'string' && v.trim() === '');
+
+/**
+ * Residence is not citizenship, so this only ever fills the separate
+ * `nationalityGuess` field, and only when the CV stated no nationality at all.
+ */
+function withNationalityGuess(result: ExtractedCV): ExtractedCV {
+  if (!isBlank(result.nationality) || isBlank(result.currentLocation)) return result;
+  const guess = demonymForLocation(result.currentLocation);
+  if (!guess) return result;
+  return { ...result, nationalityGuess: guess, nationalityGuessFrom: result.currentLocation as string };
+}
 
 /**
  * Merges an LLM result over a regex result.
@@ -119,17 +142,17 @@ export async function extractCv(filePath: string): Promise<ExtractedCV> {
   const llm = llmAttempted ? await parseCvWithLlm(raw as string) : null;
 
   if (!llm) {
-    return {
+    return withNationalityGuess({
       ...regex,
       _meta: { source: 'regex', llmAttempted, llmUsed: false, fieldsFromLlm: [] },
-    };
+    });
   }
 
   const { result, fieldsFromLlm } = mergeCvResults(regex, llm);
   console.log('[cvExtract] llm improved fields:', fieldsFromLlm.join(', ') || '(none)');
 
-  return {
+  return withNationalityGuess({
     ...result,
     _meta: { source: 'llm+regex', llmAttempted, llmUsed: true, fieldsFromLlm },
-  };
+  });
 }

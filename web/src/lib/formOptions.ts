@@ -145,6 +145,42 @@ export const DEFAULT_COUNTRY = 'AE';
 
 export const countryByCode = (code: string) => COUNTRIES.find((c) => c.code === code);
 
+/** Short forms people write instead of the official country name. */
+const COUNTRY_ALIASES: Record<string, string> = {
+  'uae': 'AE', 'u.a.e': 'AE', 'emirates': 'AE',
+  'usa': 'US', 'u.s.a': 'US', 'u.s': 'US', 'us': 'US', 'america': 'US',
+  'uk': 'GB', 'u.k': 'GB', 'britain': 'GB', 'great britain': 'GB',
+  'england': 'GB', 'scotland': 'GB', 'wales': 'GB',
+  'korea': 'KR', 'south korea': 'KR',
+  'ksa': 'SA', 'saudi': 'SA',
+};
+
+/**
+ * Best-effort country → demonym for a free-text location such as
+ * "Pune, India" or "Dubai, UAE".
+ *
+ * Deliberately NOT used to set `nationality`: where someone lives is not their
+ * citizenship, and for a UAE agency a wrong nationality affects visa
+ * eligibility, so it may only pre-select a value a person then confirms.
+ * Returns null unless the country is recognised, and any value returned comes
+ * from COUNTRIES, so it is always a valid NATIONALITIES option.
+ */
+export function demonymForLocation(location?: string | null): string | null {
+  const raw = (location ?? '').trim();
+  if (!raw) return null;
+  // Reversed, because the country is the last part of "Pune, Maharashtra, India".
+  const parts = raw.split(',').map((s) => s.trim()).filter(Boolean).reverse();
+  for (const part of [...parts, raw]) {
+    const key = part.toLowerCase().replace(/\.+$/, '');
+    const code = COUNTRY_ALIASES[key];
+    const hit = code
+      ? COUNTRIES.find((c) => c.code === code)
+      : COUNTRIES.find((c) => c.name.toLowerCase() === key);
+    if (hit) return hit.demonym;
+  }
+  return null;
+}
+
 /** Longest dial code wins, since '+97' prefixes both '+971' and '+974'. */
 function matchDial(compact: string, prefix: string): Country | undefined {
   const matches = COUNTRIES

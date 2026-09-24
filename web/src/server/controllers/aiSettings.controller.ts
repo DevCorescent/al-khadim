@@ -10,7 +10,7 @@ import OpenAI from 'openai';
 import { prisma } from '@/lib/prisma';
 import { requireStaff } from '../auth';
 import { body, handler, json } from '../http';
-import { invalidateAiSettingsCache, ALLOWED_MODELS, DEFAULT_MODEL } from '../utils/aiClient';
+import { invalidateAiSettingsCache, ALLOWED_MODELS, DEFAULT_MODEL, providerBaseUrl } from '../utils/aiClient';
 
 const MAX_TOKENS_CAP = 4000;
 
@@ -48,8 +48,17 @@ export const update = handler(async (req) => {
       rateLimitPublicPerIpPerHour, rateLimitAdminPerUserPerHour, adminSystemPromptExtra,
     } = await body(req);
 
+    // The allowlist names OpenAI's models. Against a compatible provider
+    // (Gemini, Groq…) the model names are theirs and change often — pinning
+    // them here is what leaves an admin unable to move off a decommissioned
+    // model. So a provider's own name is accepted, while an OpenAI-shaped name
+    // is still checked, which keeps typos like "gpt-99" out either way.
     if (model !== undefined && model !== null && model !== '' && !ALLOWED_MODELS.includes(model)) {
-      return json({ error: `Invalid model. Allowed: ${ALLOWED_MODELS.join(', ')}` }, 400);
+      const named = typeof model === 'string' && /^[\w.\-\/:]{1,80}$/.test(model);
+      const looksOpenAi = named && /^(gpt|o[0-9])[\w.\-]*$/i.test(model);
+      if (!named || looksOpenAi || !providerBaseUrl()) {
+        return json({ error: `Invalid model. Allowed: ${ALLOWED_MODELS.join(', ')}` }, 400);
+      }
     }
     if (temperature !== undefined && temperature !== null && temperature !== '') {
       const t = Number(temperature);
@@ -137,7 +146,9 @@ export const test = handler(async (req) => {
       return json({ error: 'No API key is saved yet — enter a key and test before saving.' }, 400);
     }
 
-    const testClient = new OpenAI({ apiKey: effectiveKey });
+    // Must hit the same endpoint the app will use, or a Gemini/Groq key gets
+    // tested against api.openai.com and always reports "Connection failed".
+    const testClient = new OpenAI({ apiKey: effectiveKey, baseURL: providerBaseUrl() });
     await testClient.chat.completions.create({
       model: effectiveModel,
       max_tokens: 5,
