@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Search, X, Briefcase, Users, Menu } from 'lucide-react';
+import { Search, X, Briefcase, Users, Menu, ShieldCheck, ChevronDown } from 'lucide-react';
 import { useSiteConfig } from '@/lib/siteConfig';
 
 const DEFAULT_LINKS = [
@@ -18,12 +18,19 @@ const suggestions = {
   hire: ['Executive Search', 'Bulk Hiring', 'Contract Staffing', 'Visa Assistance', 'Recruitment'],
 };
 
+const LOGIN_OPTIONS = [
+  { label: 'Candidate',  href: '/candidate/login', icon: Briefcase },
+  { label: 'Company',    href: '/company/login',   icon: Users },
+  { label: 'Staff / Admin', href: '/login',         icon: ShieldCheck },
+];
+
 export default function Navbar() {
   const [scrolled,   setScrolled]   = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchMode, setSearchMode] = useState<'work' | 'hire'>('work');
   const [query,      setQuery]      = useState('');
   const [mobileMenu, setMobileMenu] = useState(false);
+  const [loginMenuOpen, setLoginMenuOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const router   = useRouter();
   const pathname = usePathname();
@@ -46,7 +53,7 @@ export default function Navbar() {
     if (searchOpen) setTimeout(() => inputRef.current?.focus(), 80);
   }, [searchOpen]);
 
-  useEffect(() => { setMobileMenu(false); setSearchOpen(false); }, [pathname]);
+  useEffect(() => { setMobileMenu(false); setSearchOpen(false); setLoginMenuOpen(false); }, [pathname]);
 
   function closeSearch() { setSearchOpen(false); setQuery(''); }
 
@@ -200,12 +207,30 @@ export default function Navbar() {
 
               <div className="w-px h-5 mx-0.5 shrink-0" style={{background:'rgba(255,255,255,0.09)'}}/>
 
-              <Link href="/login"
-                className="text-[13px] font-semibold px-3.5 py-2 rounded-xl"
-                style={{color:'rgba(255,255,255,0.55)'}}
-                onMouseEnter={hoverIn} onMouseLeave={e => hoverOut(e)}>
-                Log in
-              </Link>
+              <div className="relative">
+                <button onClick={() => setLoginMenuOpen(v => !v)}
+                  className="flex items-center gap-1 text-[13px] font-semibold px-3.5 py-2 rounded-xl"
+                  style={{color:'rgba(255,255,255,0.55)', background: loginMenuOpen ? 'rgba(255,255,255,0.1)' : 'transparent'}}
+                  onMouseEnter={hoverIn} onMouseLeave={e => hoverOut(e, loginMenuOpen)}>
+                  Log in <ChevronDown size={13} style={{transform: loginMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease'}} />
+                </button>
+
+                {loginMenuOpen && (
+                  <div className="absolute top-[calc(100%+8px)] right-0 w-48 rounded-2xl overflow-hidden py-1 z-[60]"
+                    style={{background:'rgba(10,10,18,0.97)',border:'1px solid rgba(255,255,255,0.09)',boxShadow:'0 20px 60px rgba(0,0,0,0.55)'}}>
+                    {LOGIN_OPTIONS.map(({ label, href, icon: Icon }) => (
+                      <Link key={href} href={href}
+                        className="flex items-center gap-2.5 px-4 py-2.5 text-[13px] font-medium"
+                        style={{color:'rgba(255,255,255,0.65)'}}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background='rgba(255,255,255,0.06)'; (e.currentTarget as HTMLElement).style.color='#fff'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background='transparent'; (e.currentTarget as HTMLElement).style.color='rgba(255,255,255,0.65)'; }}>
+                        <Icon size={13} className="shrink-0" style={{color:'rgba(255,255,255,0.35)'}} />
+                        {label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <Link href={ctaHref}
                 className="text-[13px] font-bold px-4 py-2 rounded-xl text-white ml-1"
@@ -272,18 +297,26 @@ export default function Navbar() {
               </div>
               <div className="mx-3" style={{height:1,background:'rgba(255,255,255,0.06)'}}/>
               <div className="p-2">
-                <Link href="/login"
-                  className="flex items-center px-4 py-3 rounded-[14px] text-[14px] font-semibold"
-                  style={{color:'rgba(255,255,255,0.45)'}}>
-                  Log in
-                </Link>
+                <p className="px-4 pt-1 pb-1.5 text-[10px] font-bold uppercase tracking-widest" style={{color:'rgba(255,255,255,0.3)'}}>
+                  Log in as
+                </p>
+                {LOGIN_OPTIONS.map(({ label, href, icon: Icon }) => (
+                  <Link key={href} href={href}
+                    className="flex items-center gap-2.5 px-4 py-3 rounded-[14px] text-[14px] font-semibold"
+                    style={{color:'rgba(255,255,255,0.5)'}}>
+                    <Icon size={14} className="shrink-0" style={{color:'rgba(255,255,255,0.3)'}} />
+                    {label}
+                  </Link>
+                ))}
               </div>
             </div>
           )}
         </div>
       </nav>
 
-      {searchOpen && <div className="fixed inset-0 z-40" onClick={closeSearch}/>}
+      {(searchOpen || loginMenuOpen) && (
+        <div className="fixed inset-0 z-40" onClick={() => { closeSearch(); setLoginMenuOpen(false); }}/>
+      )}
     </>
   );
 }
