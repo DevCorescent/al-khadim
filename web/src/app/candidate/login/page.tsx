@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { useCandidateAuth } from '@/lib/candidateAuth';
+import ForgotPasswordModal from '@/components/ForgotPasswordModal';
 import { Eye, EyeOff, Mail, Lock, ArrowRight, Briefcase } from 'lucide-react';
 
 export default function CandidateLoginPage() {
@@ -11,6 +12,7 @@ export default function CandidateLoginPage() {
   const [password, setPassword] = useState('');
   const [show, setShow]         = useState(false);
   const [loading, setLoading]   = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
   const { login } = useCandidateAuth();
   const router    = useRouter();
 
@@ -99,6 +101,11 @@ export default function CandidateLoginPage() {
                   {show ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
+              <div className="text-right mt-1.5">
+                <button type="button" onClick={() => setForgotOpen(true)} className="text-xs text-primary-500 hover:underline">
+                  Forgot password?
+                </button>
+              </div>
             </div>
             <button type="submit" disabled={loading}
               className="w-full btn-primary justify-center py-3.5 rounded-xl text-sm disabled:opacity-60">
@@ -120,6 +127,14 @@ export default function CandidateLoginPage() {
           </p>
         </div>
       </div>
+
+      {forgotOpen && (
+        <ForgotPasswordModal
+          purpose="CANDIDATE_PASSWORD_RESET"
+          resetPath="/api/candidate-auth/reset-password"
+          onClose={() => setForgotOpen(false)}
+        />
+      )}
     </div>
   );
 }

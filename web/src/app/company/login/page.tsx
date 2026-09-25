@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { useClientAuth } from '@/lib/clientAuth';
+import ForgotPasswordModal from '@/components/ForgotPasswordModal';
 import { Eye, EyeOff, Mail, Lock, ArrowRight, Building2 } from 'lucide-react';
 
 export default function CompanyLoginPage() {
@@ -11,6 +12,7 @@ export default function CompanyLoginPage() {
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
   const { login } = useClientAuth();
   const router = useRouter();
 
@@ -94,6 +96,11 @@ export default function CompanyLoginPage() {
                   {show ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
+              <div className="text-right mt-1.5">
+                <button type="button" onClick={() => setForgotOpen(true)} className="text-xs text-primary-500 hover:underline">
+                  Forgot password?
+                </button>
+              </div>
             </div>
             <button type="submit" disabled={loading}
               className="w-full btn-primary justify-center py-3.5 rounded-xl text-sm disabled:opacity-60">
@@ -112,6 +119,14 @@ export default function CompanyLoginPage() {
           </p>
         </div>
       </div>
+
+      {forgotOpen && (
+        <ForgotPasswordModal
+          purpose="COMPANY_PASSWORD_RESET"
+          resetPath="/api/client-auth/reset-password"
+          onClose={() => setForgotOpen(false)}
+        />
+      )}
     </div>
   );
 }

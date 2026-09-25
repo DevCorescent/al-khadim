@@ -163,6 +163,36 @@ export const login = handler(async (req) => {
   }
 });
 
+/* ── Reset password via a verified OTP ticket (public) ── */
+export const resetPassword = handler(async (req) => {
+  limiter(req);
+  try {
+    const { email, ticket, password } = await body(req);
+    if (!email || !ticket || !password) {
+      return json({ error: 'Email, ticket and new password are required' }, 400);
+    }
+    if (typeof password !== 'string' || password.length < 8) {
+      return json({ error: 'Password must be at least 8 characters' }, 400);
+    }
+
+    const normalized = normalizeEmail(email);
+    const otp = await redeemTicket(ticket, normalized, 'CANDIDATE_PASSWORD_RESET');
+
+    const account = await prisma.candidateAccount.findFirst({ where: { candidate: { email: normalized } } });
+    if (!account) return json({ error: 'No candidate portal account found for this email.' }, 404);
+
+    const hashedPassword = await bcrypt.hash(password, 12);
+    await prisma.$transaction([
+      prisma.candidateAccount.update({ where: { id: account.id }, data: { password: hashedPassword, refreshToken: null } }),
+      prisma.otpCode.update({ where: { id: otp.id }, data: { ticketUsedAt: new Date() } }),
+    ]);
+
+    return json({ message: 'Password updated. You can now log in.' });
+  } catch (err: any) {
+    return json({ error: err.message }, err.status || 400);
+  }
+});
+
 /* ── Refresh token ── */
 export const refresh = handler(async (req) => {
   const { refreshToken } = await body(req);

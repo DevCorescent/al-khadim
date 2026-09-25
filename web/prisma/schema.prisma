@@ -811,6 +811,8 @@ model CandidateRegistration {
 enum OtpPurpose {
   CANDIDATE_REGISTRATION
   COMPANY_REGISTRATION
+  CANDIDATE_PASSWORD_RESET
+  COMPANY_PASSWORD_RESET
 }
 
 model OtpCode {

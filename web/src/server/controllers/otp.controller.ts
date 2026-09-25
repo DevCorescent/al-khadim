@@ -7,10 +7,16 @@ import { normalizeEmail, sendOtp, verifyOtp } from '../utils/otp';
 // One limiter shared by /send and /verify, as in Express (same instance → same per-IP budget).
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
 
-const PURPOSES = ['CANDIDATE_REGISTRATION', 'COMPANY_REGISTRATION'];
+const REGISTRATION_PURPOSES = ['CANDIDATE_REGISTRATION', 'COMPANY_REGISTRATION'];
+const RESET_PURPOSES = ['CANDIDATE_PASSWORD_RESET', 'COMPANY_PASSWORD_RESET'];
+const PURPOSES = [...REGISTRATION_PURPOSES, ...RESET_PURPOSES];
 
 function conflict(message: string) {
   return Object.assign(new Error(message), { status: 409 });
+}
+
+function notFound(message: string) {
+  return Object.assign(new Error(message), { status: 404 });
 }
 
 async function assertEmailAvailable(email: string, purpose: string) {
@@ -27,6 +33,17 @@ async function assertEmailAvailable(email: string, purpose: string) {
   }
 }
 
+/** Password reset is the inverse check: the account must already exist. */
+async function assertAccountExists(email: string, purpose: string) {
+  if (purpose === 'CANDIDATE_PASSWORD_RESET') {
+    const account = await prisma.candidateAccount.findFirst({ where: { candidate: { email } } });
+    if (!account) throw notFound('No candidate portal account found for this email.');
+  } else if (purpose === 'COMPANY_PASSWORD_RESET') {
+    const clientUser = await prisma.clientUser.findUnique({ where: { email } });
+    if (!clientUser) throw notFound('No company account found for this email.');
+  }
+}
+
 /* ── Send a verification code (public) ── */
 export const send = handler(async (req) => {
   limiter(req);
@@ -36,7 +53,11 @@ export const send = handler(async (req) => {
       return json({ error: 'Valid email and purpose are required' }, 400);
     }
     const normalized = normalizeEmail(email);
-    await assertEmailAvailable(normalized, purpose);
+    if (REGISTRATION_PURPOSES.includes(purpose)) {
+      await assertEmailAvailable(normalized, purpose);
+    } else {
+      await assertAccountExists(normalized, purpose);
+    }
     const result = await sendOtp(normalized, purpose);
     return json({ message: 'Verification code sent', ...result });
   } catch (err: any) {

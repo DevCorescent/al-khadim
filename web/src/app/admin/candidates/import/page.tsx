@@ -133,10 +133,19 @@ export default function AdminImportCVPage() {
       });
       setStep('review');
     } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Parse failed');
+      toast.error(err.response?.data?.error || 'Could not parse CV — please fill in the details manually.');
+      setCvPath('');
+      setParseError(err.response?.data?.error || 'CV parsing is unavailable right now.');
+      setStep('review');
     } finally {
       setParsing(false);
     }
+  }
+
+  function skipToManual() {
+    setCvPath('');
+    setParseError('');
+    setStep('review');
   }
 
   const onDrop = useCallback((e: React.DragEvent) => {
@@ -228,6 +237,12 @@ export default function AdminImportCVPage() {
             </div>
           ))}
         </div>
+
+        <div className="mt-6 text-center">
+          <button onClick={skipToManual} className="text-sm text-gray-400 hover:text-primary-500 underline-offset-2 hover:underline">
+            Skip — I&apos;ll enter the candidate&apos;s details manually →
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -239,9 +254,15 @@ export default function AdminImportCVPage() {
         <button onClick={() => setStep('upload')} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors">
           <ArrowLeft size={15} /> Re-upload CV
         </button>
-        <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-full">
-          <CheckCircle size={12} /> CV parsed — review & edit below
-        </div>
+        {cvPath && !parseError ? (
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-full">
+            <CheckCircle size={12} /> CV parsed — review & edit below
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-full">
+            <User size={12} /> Manual entry
+          </div>
+        )}
       </div>
 
       {parseError && (
