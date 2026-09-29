@@ -14,7 +14,7 @@ const STEPS = [
     icon: UserCheck,
     number: '02',
     title: 'Source & Screen',
-    desc: 'Our team handpicks from 1,800+ pre-verified professionals matched precisely to your criteria.',
+    desc: 'Our team handpicks pre-verified professionals matched precisely to your criteria.',
     color: '#0369a1',
   },
   {
@@ -39,7 +39,7 @@ export default function HomeProcess() {
   if (sec && !sec.enabled) return null;
 
   const title    = sec?.title    || 'How We Deliver Excellence';
-  const subtitle = sec?.subtitle || 'A proven 4-step framework trusted by 36+ leading UAE organisations';
+  const subtitle = sec?.subtitle || 'A proven 4-step framework, from brief to placement';
 
   return (
     <section className="py-20 md:py-28 bg-white relative overflow-hidden">

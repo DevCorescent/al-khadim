@@ -2,12 +2,13 @@
 import { useSiteConfig } from '@/lib/siteConfig';
 import { useEffect, useRef, useState } from 'react';
 
-const DEFAULT_STATS = [
-  { value: 1800, suffix: '+', label: 'Verified Candidates',   sub: 'Across all industries',      color: '#3b82f6' },
-  { value: 531,  suffix: '+', label: 'Successful Placements', sub: 'Verified & delivered',        color: '#0ea5e9' },
-  { value: 36,   suffix: '+', label: 'Enterprise Clients',    sub: 'Across the UAE',              color: '#14b8a6' },
-  { value: 97,   suffix: '%', label: 'Retention at 90 Days', sub: 'Industry-leading retention',   color: '#22c55e' },
-];
+/**
+ * Headline figures are entered in Site Editor. Nothing is shown until the real numbers
+ * are supplied — placeholder figures here would be published as business claims.
+ */
+interface Stat { value: number; suffix?: string; label: string; sub?: string; color?: string }
+
+const PALETTE = ['#3b82f6', '#0ea5e9', '#14b8a6', '#22c55e'];
 
 function Counter({ target, suffix }: { target: number; suffix: string }) {
   const [val, setVal] = useState(0);
@@ -43,6 +44,17 @@ export default function HomeStats() {
   const sec = sections?.stats;
   if (sec && !sec.enabled) return null;
 
+  const stats: Stat[] = (Array.isArray(sec?.items) ? sec.items : [])
+    .filter((s: any) => s?.label && Number.isFinite(Number(s.value)))
+    .map((s: any, i: number) => ({
+      value: Number(s.value),
+      suffix: s.suffix ?? '',
+      label: String(s.label),
+      sub: s.sub ?? '',
+      color: s.color || PALETTE[i % PALETTE.length],
+    }));
+  if (!stats.length) return null;
+
   return (
     <section className="py-16 md:py-20 relative overflow-hidden"
       style={{background:'linear-gradient(135deg,#0b1120 0%,#0f172a 100%)'}}>
@@ -50,7 +62,7 @@ export default function HomeStats() {
         style={{backgroundImage:'linear-gradient(#fff 1px,transparent 1px),linear-gradient(90deg,#fff 1px,transparent 1px)',backgroundSize:'48px 48px'}}/>
       <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-0 md:divide-x divide-white/10">
-          {DEFAULT_STATS.map(({ value, suffix, label, sub, color }) => (
+          {stats.map(({ value, suffix, label, sub, color }) => (
             <div key={label} className="text-center md:px-8 py-4">
               <p className="font-black text-4xl md:text-5xl tracking-tight mb-2" style={{color}}>
                 <Counter target={value} suffix={suffix}/>

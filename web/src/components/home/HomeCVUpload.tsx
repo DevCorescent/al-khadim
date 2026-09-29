@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Upload, CheckCircle, ArrowRight, Star, Zap, Shield } from 'lucide-react';
+import { Upload, CheckCircle, ArrowRight, Star, Zap, Shield, User } from 'lucide-react';
 
 const steps = [
   { icon: Upload,       title: 'Upload Your CV',       desc: 'PDF or DOCX — we parse it instantly.' },
@@ -25,7 +25,7 @@ export default function HomeCVUpload() {
               <span className="text-primary-400">Get placed in the UAE.</span>
             </h2>
             <p className="text-gray-500 text-base leading-relaxed mb-8 max-w-lg">
-              Our AI-powered CV parser extracts your profile automatically. Once approved by our team, you'll get a public profile, access to your personal dashboard, and direct exposure to 36+ UAE employers.
+              Our AI-powered CV parser extracts your profile automatically. Once approved by our team, you'll get a public profile, access to your personal dashboard, and direct exposure to hiring employers.
             </p>
 
             {/* Steps */}
@@ -68,24 +68,24 @@ export default function HomeCVUpload() {
               <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-5 mb-4">
                 <div className="flex items-center gap-4 mb-4">
                   <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-primary-400 to-blue-600 flex items-center justify-center shrink-0">
-                    <span className="text-white font-bold text-xl">AM</span>
+                    <User size={22} className="text-white" />
                   </div>
                   <div>
-                    <p className="font-bold text-gray-900">Arjun Mehta</p>
-                    <p className="text-xs text-gray-500">Senior Software Engineer</p>
-                    <p className="text-xs text-emerald-500 font-semibold flex items-center gap-1 mt-0.5">
+                    <div className="h-3 w-28 rounded bg-gray-200 mb-2" />
+                    <div className="h-2.5 w-36 rounded bg-gray-100 mb-2" />
+                    <p className="text-xs text-emerald-500 font-semibold flex items-center gap-1">
                       <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full inline-block" /> Available for hire
                     </p>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mb-4">
-                  {['React', 'Node.js', 'AWS', 'TypeScript', 'Docker'].map(s => (
-                    <span key={s} className="text-[10px] font-bold text-primary-700 bg-primary-50 border border-primary-100 px-2 py-0.5 rounded-full">{s}</span>
+                  {[56, 44, 38, 60, 46].map((w, i) => (
+                    <span key={i} className="h-4 rounded-full bg-primary-50 border border-primary-100" style={{ width: w }} />
                   ))}
                 </div>
-                <div className="flex items-center justify-between text-xs text-gray-400">
-                  <span>Dubai, UAE · 8 yrs exp</span>
-                  <span className="text-primary-500 font-semibold">Indian</span>
+                <div className="flex items-center justify-between">
+                  <div className="h-2.5 w-32 rounded bg-gray-100" />
+                  <div className="h-2.5 w-14 rounded bg-primary-100" />
                 </div>
               </div>
 
@@ -93,20 +93,12 @@ export default function HomeCVUpload() {
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 flex items-center gap-3">
                 <CheckCircle size={20} className="text-emerald-500 shrink-0" />
                 <div>
-                  <p className="text-xs font-bold text-emerald-800">CV Parsed Successfully</p>
-                  <p className="text-xs text-emerald-600">12 skills · 8 years experience · 3 languages extracted</p>
+                  <p className="text-xs font-bold text-emerald-800">CV parsed successfully</p>
+                  <p className="text-xs text-emerald-600">Skills, experience and languages filled in for you</p>
                 </div>
               </div>
 
               {/* Stats */}
-              <div className="grid grid-cols-3 gap-3 mt-4">
-                {[['1,800+', 'Candidates'], ['48h', 'Avg Placement'], ['97%', 'Satisfaction']].map(([v, l]) => (
-                  <div key={l} className="bg-white rounded-xl border border-gray-100 p-3 text-center">
-                    <p className="text-base font-bold text-gray-900">{v}</p>
-                    <p className="text-[10px] text-gray-400">{l}</p>
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
         </div>

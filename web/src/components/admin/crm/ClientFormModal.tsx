@@ -31,13 +31,36 @@ interface Props {
   onSubmit: (body: any) => void;
 }
 
+const hasLetter = (v: string) => /\p{L}/u.test(v || '');
+const digitsOf = (v: string) => String(v || '').trim().replace(/[\s().-]/g, '').replace(/^\+/, '');
+const isPhone = (v: string) => /^\d{7,15}$/.test(digitsOf(v));
+/** Browsers accept "name@gmail" for type="email", so the domain is checked properly here. */
+const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(String(v || '').trim());
+
+const PHONE_HINT = 'Enter 7 to 15 digits, optionally starting with +';
+
+/** Mirrors the rules the API enforces, so problems surface before the request is sent. */
+function validate(body: any): Record<string, string> {
+  const errors: Record<string, string> = {};
+  if (!hasLetter(body.companyName)) errors.companyName = 'Must contain at least one letter';
+  if (!hasLetter(body.contactPerson)) errors.contactPerson = 'Must contain at least one letter';
+  if (!isEmail(body.email)) errors.email = 'Enter a valid email address, e.g. name@company.com';
+  if (!isPhone(body.phone)) errors.phone = PHONE_HINT;
+  if (String(body.altPhone || '').trim() && !isPhone(body.altPhone)) errors.altPhone = PHONE_HINT;
+  return errors;
+}
+
 /** Add / edit client form, shared by the CRM clients list and the client detail page. */
 export default function ClientFormModal({ isOpen, onClose, editing, saving, onSubmit }: Props) {
   const { data: industries } = useIndustries();
   const [showOtherSource, setShowOtherSource] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (isOpen) setShowOtherSource(!!editing?.source && !CLIENT_STANDARD_SOURCES.includes(editing.source));
+    if (isOpen) {
+      setShowOtherSource(!!editing?.source && !CLIENT_STANDARD_SOURCES.includes(editing.source));
+      setErrors({});
+    }
   }, [isOpen, editing]);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -47,6 +70,10 @@ export default function ClientFormModal({ isOpen, onClose, editing, saving, onSu
     body.isActive = body.isActive !== 'false';
     if (body.source === 'Other' && body.sourceOther) body.source = body.sourceOther;
     delete body.sourceOther;
+
+    const found = validate(body);
+    setErrors(found);
+    if (Object.keys(found).length) return;
     onSubmit(body);
   }
 
@@ -63,8 +90,19 @@ export default function ClientFormModal({ isOpen, onClose, editing, saving, onSu
               ) : (
                 <input type={f.type} name={f.name} required={f.required} defaultValue={editing?.[f.name] || ''}
                   pattern={f.pattern} inputMode={f.inputMode} title={f.title}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30" />
+                  aria-invalid={!!errors[f.name]}
+                  onChange={() => errors[f.name] && setErrors(prev => {
+                    const { [f.name]: _removed, ...rest } = prev;
+                    return rest;
+                  })}
+                  className={`w-full border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
+                    errors[f.name]
+                      ? 'border-red-400 focus:ring-red-400/30'
+                      : 'border-gray-200 focus:ring-primary-400/30'
+                  }`} />
+
               )}
+              {errors[f.name] && <p className="text-[11px] text-red-500 mt-1">{errors[f.name]}</p>}
             </div>
           ))}
           <div>

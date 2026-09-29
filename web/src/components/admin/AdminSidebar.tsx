@@ -99,6 +99,25 @@ function useVisibleNav(): NavItem[] {
   }), [user]);
 }
 
+/**
+ * The single nav href that the current path belongs to.
+ *
+ * Several entries can match the same path, because some are prefixes of others:
+ * /admin/crm (Clients) is a prefix of /admin/crm/deals, and /admin/candidates
+ * (Candidates) of /admin/candidates/registrations. Matching on the prefix alone lit up
+ * the parent entry as well as the page actually open, so the longest match wins instead.
+ * It also puts /admin/crm/invoices on Finance > Invoices rather than CRM > Clients.
+ */
+function useActiveHref(items: NavItem[], pathname: string): string | undefined {
+  return useMemo(() => {
+    const hrefs = items.flatMap(item =>
+      item.children ? item.children.map(ch => ch.href) : [item.href!]);
+    return hrefs
+      .filter(href => pathname === href || pathname.startsWith(href + '/'))
+      .sort((a, b) => b.length - a.length)[0];
+  }, [items, pathname]);
+}
+
 /** Pending-count pill for nav entries that have a review queue. */
 function NavBadge({ href }: { href: string }) {
   const enabled = href === '/admin/profile-changes';
@@ -124,6 +143,7 @@ export default function AdminSidebar({ open, onClose, collapsed, onToggleCollaps
   const { user, logout } = useAuth();
   const router = useRouter();
   const items = useVisibleNav();
+  const activeHref = useActiveHref(items, pathname);
   const [expanded, setExpanded] = useState<string[]>(['CRM', 'Finance', 'Recruitment', 'HRMS', 'Team', 'Settings']);
 
   const toggle = (label: string) =>
@@ -166,7 +186,7 @@ export default function AdminSidebar({ open, onClose, collapsed, onToggleCollaps
         {items.map(item => {
           if (item.children) {
             const isOpen   = expanded.includes(item.label);
-            const isActive = item.children.some(ch => pathname === ch.href || pathname.startsWith(ch.href + '/'));
+            const isActive = item.children.some(ch => ch.href === activeHref);
 
             if (c) {
               // Collapsed: icon-only trigger with a hover flyout listing children.
@@ -181,7 +201,7 @@ export default function AdminSidebar({ open, onClose, collapsed, onToggleCollaps
                   <div className="absolute left-full top-0 ml-2 hidden group-hover:block z-40 min-w-[180px] bg-white rounded-xl border border-gray-100 shadow-lg py-1.5">
                     <p className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">{item.label}</p>
                     {item.children.map(child => {
-                      const active = pathname === child.href || pathname.startsWith(child.href + '/');
+                      const active = child.href === activeHref;
                       return (
                         <Link key={child.href} href={child.href} onClick={handleNavClick}
                           className="flex items-center gap-2 px-3 py-2 text-xs font-semibold transition-colors"
@@ -209,14 +229,14 @@ export default function AdminSidebar({ open, onClose, collapsed, onToggleCollaps
                     <item.icon size={14} />
                     <span className="tracking-wide">{item.label}</span>
                   </span>
-                  <ChevronDown size={12}
-                    className={clsx('transition-transform duration-200 text-gray-300', isOpen ? 'rotate-0' : '-rotate-90')} />
+                  <ChevronDown size={13} strokeWidth={2.75}
+                    className={clsx('transition-transform duration-200 text-gray-500', isOpen ? 'rotate-0' : '-rotate-90')} />
                 </button>
 
                 {isOpen && (
                   <div className="mt-0.5 mb-1 ml-3 pl-3 space-y-0.5 border-l-[1.5px] border-gray-100">
                     {item.children.map(child => {
-                      const active = pathname === child.href || pathname.startsWith(child.href + '/');
+                      const active = child.href === activeHref;
                       return (
                         <Link key={child.href} href={child.href} onClick={handleNavClick}
                           className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold transition-colors hover:bg-gray-100"
@@ -234,7 +254,7 @@ export default function AdminSidebar({ open, onClose, collapsed, onToggleCollaps
             );
           }
 
-          const active = pathname === item.href;
+          const active = item.href === activeHref;
           const link = (
             <Link key={item.href!} href={item.href!} onClick={handleNavClick}
               className={clsx('flex items-center rounded-xl text-xs font-semibold transition-colors',
@@ -326,6 +346,7 @@ function MobileSidebarBody({ pathname, onClose }: { pathname: string; onClose?: 
   const { user, logout } = useAuth();
   const router = useRouter();
   const items = useVisibleNav();
+  const activeHref = useActiveHref(items, pathname);
   const [expanded, setExpanded] = useState<string[]>(['CRM', 'Finance', 'Recruitment', 'HRMS', 'Team', 'Settings']);
   const toggle = (label: string) =>
     setExpanded(prev => prev.includes(label) ? prev.filter(l => l !== label) : [...prev, label]);
@@ -354,7 +375,7 @@ function MobileSidebarBody({ pathname, onClose }: { pathname: string; onClose?: 
         {items.map(item => {
           if (item.children) {
             const isOpen   = expanded.includes(item.label);
-            const isActive = item.children.some(ch => pathname === ch.href || pathname.startsWith(ch.href + '/'));
+            const isActive = item.children.some(ch => ch.href === activeHref);
             return (
               <div key={item.label}>
                 <button
@@ -366,12 +387,12 @@ function MobileSidebarBody({ pathname, onClose }: { pathname: string; onClose?: 
                     <item.icon size={14} />
                     <span className="tracking-wide">{item.label}</span>
                   </span>
-                  <ChevronDown size={12} className={clsx('transition-transform duration-200 text-gray-300', isOpen ? 'rotate-0' : '-rotate-90')} />
+                  <ChevronDown size={13} strokeWidth={2.75} className={clsx('transition-transform duration-200 text-gray-500', isOpen ? 'rotate-0' : '-rotate-90')} />
                 </button>
                 {isOpen && (
                   <div className="mt-0.5 mb-1 ml-3 pl-3 space-y-0.5 border-l-[1.5px] border-gray-100">
                     {item.children.map(child => {
-                      const active = pathname === child.href || pathname.startsWith(child.href + '/');
+                      const active = child.href === activeHref;
                       return (
                         <Link key={child.href} href={child.href} onClick={handleNavClick}
                           className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold transition-colors hover:bg-gray-100"
@@ -388,7 +409,7 @@ function MobileSidebarBody({ pathname, onClose }: { pathname: string; onClose?: 
               </div>
             );
           }
-          const active = pathname === item.href;
+          const active = item.href === activeHref;
           return (
             <Link key={item.href!} href={item.href!} onClick={handleNavClick}
               className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-colors hover:bg-gray-50"

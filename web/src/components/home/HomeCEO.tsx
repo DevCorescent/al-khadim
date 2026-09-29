@@ -46,7 +46,7 @@ export default function HomeCEO() {
               With a rich background spanning transport, people management, and strategic consulting, Mr. Santosh Bhagat co-founded Al Khadim LLC to address the UAE's growing demand for comprehensive manpower solutions.
             </p>
             <p className="text-gray-500 text-sm leading-relaxed mb-8">
-              Under his leadership, Al Khadim has grown to serve 36+ enterprise clients, placing over 1,800 candidates across the UAE and beyond.
+              Under his leadership, Al Khadim has grown to serve enterprise clients across the UAE and beyond.
             </p>
 
             <Link href="/about"

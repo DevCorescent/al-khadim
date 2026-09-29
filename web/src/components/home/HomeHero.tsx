@@ -162,7 +162,10 @@ export default function HomeHero() {
   if (hero && !hero.enabled) return null;
 
   const headline    = hero?.headline    || "Connecting UAE's Best Talent\nwith Top Employers";
-  const subheadline = hero?.subheadline || 'Hire expert professionals or find your next career move — trusted by 36+ leading UAE organisations since 2017.';
+  const subheadline = hero?.subheadline || 'Hire expert professionals, or find your next career move.';
+  const heroStats: { value: string; label: string }[] = Array.isArray(hero?.stats)
+    ? hero.stats.filter((s: any) => s?.value && s?.label)
+    : [];
   const cta1Label   = hero?.cta1Label   || 'Hire Talent';
   const cta1Href    = hero?.cta1Href    || '/enquiry';
   const cta2Label   = hero?.cta2Label   || 'Find Jobs';
@@ -506,15 +509,11 @@ export default function HomeHero() {
         )}
       </div>
 
-      {/* Bottom stats strip */}
+      {/* Bottom stats strip — only rendered once real figures are set in Site Editor */}
+      {heroStats.length > 0 && (
       <div className="absolute bottom-0 left-0 right-0 bg-black/35 backdrop-blur-sm border-t border-white/10">
         <div className="max-w-7xl mx-auto px-5 lg:px-16 py-4 flex items-center gap-8 sm:gap-12 overflow-x-auto scrollbar-hide">
-          {[
-            { value: '1,800+', label: 'Candidates in database' },
-            { value: '531+',   label: 'Jobs fulfilled' },
-            { value: '36+',    label: 'Enterprise clients' },
-            { value: '7+',     label: 'Years of excellence' },
-          ].map(({ value, label }) => (
+          {heroStats.map(({ value, label }) => (
             <div key={label} className="flex items-center gap-2.5 shrink-0">
               <p className="text-white font-bold text-lg sm:text-xl tracking-tight">{value}</p>
               <p className="text-white/45 text-[11px] leading-tight max-w-[80px]">{label}</p>
@@ -522,6 +521,7 @@ export default function HomeHero() {
           ))}
         </div>
       </div>
+      )}
     </section>
   );
 }

@@ -6,6 +6,7 @@ import { body, handler, HttpError, json, query } from '../http';
 import { escapeHtml, pagination, pickFields, scalarFields } from '../validate';
 import { sendTemplatedMail } from '../utils/templateRenderer';
 import { applyChecklistSafely } from '../utils/onboardingDocuments';
+import { hasLetter, isEmail, isPhone } from './auth.controller';
 
 const INDUSTRY_SELECT = { id: true, key: true, name: true, color: true };
 
@@ -17,7 +18,7 @@ const REQUIRED_FIELDS = ['companyName', 'contactPerson', 'email', 'phone'];
 /** Invoices that have been issued but not yet paid. */
 const OUTSTANDING_STATUSES = ['SENT', 'OVERDUE'];
 
-/** Whitelists and normalises a create/update payload. */
+/** Whitelists, validates and normalises a create/update payload. */
 function clientData(raw: any, partial: boolean) {
   const data: any = pickFields(raw, CLIENT_FIELDS);
   for (const f of REQUIRED_FIELDS) {
@@ -25,6 +26,28 @@ function clientData(raw: any, partial: boolean) {
       throw new HttpError(400, `${f} is required`);
     }
   }
+
+  // Presence alone let "1234" through as a company name and "adnadn@gmail" as an
+  // address, so each required field is also checked for shape. A field absent from a
+  // partial update keeps whatever is already stored.
+  const given = (f: string) => !partial || f in data;
+  if (given('companyName') && !hasLetter(data.companyName)) {
+    throw new HttpError(400, 'Company name must contain at least one letter');
+  }
+  if (given('contactPerson') && !hasLetter(data.contactPerson)) {
+    throw new HttpError(400, 'Contact person must contain at least one letter');
+  }
+  if (given('email') && !isEmail(String(data.email).trim())) {
+    throw new HttpError(400, 'Enter a valid email address, for example name@company.com');
+  }
+  if (given('phone') && !isPhone(data.phone)) {
+    throw new HttpError(400, 'Enter a valid phone number (7 to 15 digits, optionally starting with +)');
+  }
+  if (data.altPhone !== undefined && String(data.altPhone).trim() && !isPhone(data.altPhone)) {
+    throw new HttpError(400, 'Enter a valid alternate phone number (7 to 15 digits, optionally starting with +)');
+  }
+  if (data.email !== undefined) data.email = String(data.email).trim();
+
   if (data.industryId === '') data.industryId = null;
   if (data.isActive !== undefined) data.isActive = data.isActive === true || data.isActive === 'true';
   if (data.tags !== undefined) {
@@ -326,9 +349,25 @@ export const get = handler<{ id: string }>(async (req, { params }) => {
   return json(client);
 });
 
+/**
+ * One company per email address, matching what company self-signup already enforces
+ * (clientAuth.register). Without it the same company could be added repeatedly, which
+ * is what produced the duplicate cards QA reported. Compared case-insensitively.
+ */
+async function assertEmailNotTaken(email: string, exceptId?: string) {
+  const clash = await prisma.client.findFirst({
+    where: { email: { equals: email, mode: 'insensitive' }, ...(exceptId && { id: { not: exceptId } }) },
+    select: { companyName: true },
+  });
+  if (clash) {
+    throw new HttpError(409, `A client with this email already exists (${clash.companyName})`);
+  }
+}
+
 export const create = handler(async (req) => {
   const user = await requirePermission(req, 'clients', 'create');
   const data = clientData(await body(req), false);
+  await assertEmailNotTaken(data.email);
   try {
     const client = await prisma.client.create({ data });
     // Staff-added clients start approved, so onboarding documents are requested right away.
@@ -342,6 +381,7 @@ export const create = handler(async (req) => {
 export const update = handler<{ id: string }>(async (req, { params }) => {
   await requirePermission(req, 'clients', 'edit');
   const data = clientData(await body(req), true);
+  if (data.email !== undefined) await assertEmailNotTaken(data.email, params.id);
   try {
     const client = await prisma.client.update({ where: { id: params.id }, data });
     return json(client);

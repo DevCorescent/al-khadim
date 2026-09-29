@@ -37,10 +37,10 @@ const PILLARS = [
   },
   {
     icon: Award,
-    title: '97% Retention at 90 Days',
-    desc: 'Industry-leading placement retention. We only succeed when your hire succeeds long-term.',
-    stat: '97%',
-    statLabel: 'retention rate',
+    title: 'Placements That Last',
+    desc: 'We only succeed when your hire succeeds long-term, so we optimise for retention rather than speed alone.',
+    stat: '90',
+    statLabel: 'day follow-up',
     color: '#0369a1',
   },
   {

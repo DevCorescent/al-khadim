@@ -1,12 +1,25 @@
 /**
- * Seeds the database with staff accounts, reference data and demo records.
- * Idempotent: every write is an upsert keyed on a unique field, and existing
- * rows are never overwritten (so admin edits and changed passwords survive a re-run).
+ * Seeds only what a fresh install cannot start without:
+ *   1. one admin account to sign in with
+ *   2. the email templates the app sends from code
+ *
+ * The templates are not optional. `getTemplateBySlug` throws when a slug is missing and
+ * `sendOtp` awaits it, so without them the verification email fails and candidate and
+ * company registration break outright.
+ *
+ * Everything else — clients, candidates, jobs, further staff — is created through the
+ * admin UI, so a new environment starts empty rather than full of sample records.
+ *
+ * Idempotent: every write is an upsert keyed on a unique field, and existing rows are
+ * never overwritten (so admin edits and changed passwords survive a re-run).
  *
  * Run with:  npx prisma db seed
  * Optional env:
- *   SEED_ADMIN_EMAIL       / SEED_ADMIN_PASSWORD
- *   SEED_DEMO_DATA=false   skip sample clients, jobs and candidates
+ *   SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD   override the admin credentials
+ *   SEED_REFERENCE_DATA=true                 also add the industry and category lists
+ *   SEED_DEMO_DATA=true                      also add sample records and one login per
+ *                                            role (for internal testing only — never
+ *                                            for a customer environment)
  */
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
@@ -220,17 +233,28 @@ async function seedDemoAccounts() {
 }
 
 async function main() {
-  console.log('Staff accounts:');
+  console.log('Admin account:');
   await seedStaff();
-  console.log('Reference data:');
-  await seedTaxonomy();
+
+  console.log('Email templates (required — the app sends these from code):');
   await seedEmailTemplates();
-  if (process.env.SEED_DEMO_DATA !== 'false') {
+
+  // Off by default: the industry and category lists are business configuration, set up
+  // from Settings once the customer's own list is known.
+  if (process.env.SEED_REFERENCE_DATA === 'true') {
+    console.log('Reference data:');
+    await seedTaxonomy();
+  }
+
+  // Off by default. Only for internal testing — never seed sample companies, candidates
+  // or shared role logins into an environment a customer will use.
+  if (process.env.SEED_DEMO_DATA === 'true') {
     console.log('Demo data:');
     await seedDemoData();
     await seedDemoAccounts();
   }
-  console.log('Seeding completed.');
+
+  console.log('\nSeeding completed. Sign in at /login and build the rest from the admin panel.');
 }
 
 main()

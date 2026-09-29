@@ -14,7 +14,7 @@ export default function HomeCTA() {
               Find the right talent, fast.
             </h3>
             <p className="text-gray-500 text-sm leading-relaxed mb-7">
-              Access 1,800+ verified candidates across the UAE. Our expert consultants match you with the right professionals within 48 hours.
+              Access verified candidates across the UAE. Our consultants match you with the right professionals.
             </p>
             <Link href="/enquiry"
               className="inline-flex items-center gap-2 bg-gray-900 text-white text-sm font-bold px-6 py-3 rounded-full hover:bg-primary-400 transition-all duration-200">
@@ -29,7 +29,7 @@ export default function HomeCTA() {
               Land your dream job in the UAE.
             </h3>
             <p className="text-white/80 text-sm leading-relaxed mb-7">
-              Browse 531+ active positions across top UAE companies. Let our placement experts guide your career journey every step of the way.
+              Browse active positions across UAE companies. Let our placement experts guide your career journey every step of the way.
             </p>
             <Link href="/careers"
               className="inline-flex items-center gap-2 bg-white text-gray-900 text-sm font-bold px-6 py-3 rounded-full hover:bg-gray-100 transition-all duration-200">

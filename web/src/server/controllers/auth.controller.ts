@@ -70,6 +70,25 @@ export function isEmail(s: string): boolean {
   return user.split('.').every((p) => emailUserUtf8Part.test(p));
 }
 
+/**
+ * A phone number we are willing to store. Formatting (spaces, hyphens, brackets and a
+ * leading +) is ignored; what is left must be 7 to 15 digits, the range E.164 allows.
+ * This rejects the three shapes QA found accepted: letters, stubs like "123", and
+ * 20-digit strings.
+ */
+export function isPhone(s: string): boolean {
+  const digits = str(s).trim().replace(/[\s().-]/g, '').replace(/^\+/, '');
+  return /^\d{7,15}$/.test(digits);
+}
+
+/**
+ * True when the text contains a letter in any script, so Arabic and Latin names both
+ * pass while a purely numeric entry such as "1234" does not.
+ */
+export function hasLetter(s: string): boolean {
+  return /\p{L}/u.test(str(s));
+}
+
 const ICLOUD = ['icloud.com', 'me.com'];
 const OUTLOOK = [
   'hotmail.at', 'hotmail.be', 'hotmail.ca', 'hotmail.cl', 'hotmail.co.il', 'hotmail.co.nz', 'hotmail.co.th',

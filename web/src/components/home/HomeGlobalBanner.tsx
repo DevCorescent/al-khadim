@@ -13,17 +13,15 @@ const LOCATIONS = [
   { city: 'Singapore',   x: '88%', y: '68%', primary: false },
 ];
 
-const METRICS = [
-  { value: '36+', label: 'Enterprise Clients' },
-  { value: '1,800+', label: 'Active Candidates' },
-  { value: '531+', label: 'Successful Placements' },
-  { value: '4.9★', label: 'Client Rating' },
-];
-
 export default function HomeGlobalBanner() {
   const sections = useSiteConfig(s => s.sections);
   const sec = sections?.globalBanner;
   if (sec && !sec.enabled) return null;
+
+  // Supplied from Site Editor; the row is left out entirely until real figures exist.
+  const metrics: { value: string; label: string }[] = Array.isArray(sec?.metrics)
+    ? sec.metrics.filter((m: any) => m?.value && m?.label)
+    : [];
 
   const title    = sec?.title    || 'UAE-Based. Globally Connected.';
   const subtitle = sec?.subtitle || 'Headquartered in Dubai, we tap into a global talent network to bring the world\'s best professionals to the UAE job market.';
@@ -61,15 +59,17 @@ export default function HomeGlobalBanner() {
             <p className="text-white/55 text-base leading-relaxed mb-8">{subtitle}</p>
 
             {/* Metrics */}
-            <div className="grid grid-cols-2 gap-4 mb-8">
-              {METRICS.map(m => (
-                <div key={m.label} className="rounded-2xl p-4"
-                  style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.07)'}}>
-                  <p className="font-black text-2xl text-white tracking-tight">{m.value}</p>
-                  <p className="text-white/40 text-xs font-medium mt-0.5">{m.label}</p>
-                </div>
-              ))}
-            </div>
+            {metrics.length > 0 && (
+              <div className="grid grid-cols-2 gap-4 mb-8">
+                {metrics.map(m => (
+                  <div key={m.label} className="rounded-2xl p-4"
+                    style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.07)'}}>
+                    <p className="font-black text-2xl text-white tracking-tight">{m.value}</p>
+                    <p className="text-white/40 text-xs font-medium mt-0.5">{m.label}</p>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <Link href={ctaHref}
               className="inline-flex items-center gap-2 text-sm font-bold px-6 py-3.5 rounded-xl text-white transition-opacity hover:opacity-90"

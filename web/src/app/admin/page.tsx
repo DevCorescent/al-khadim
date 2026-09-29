@@ -2,6 +2,8 @@
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useSettings } from '@/lib/useSettings';
+import { useAuth } from '@/lib/auth';
+import { canViewPath } from '@/lib/permissions';
 import Link from 'next/link';
 import {
   Users, Briefcase, Building2, UserCheck, AlertCircle, Clock,
@@ -14,12 +16,52 @@ import {
 
 const COLORS = ['#6366f1','#1a1a2e','#10b981','#f59e0b','#ef4444','#8b5cf6','#0ea5e9','#ec4899'];
 
+/** SHORTLISTED → Shortlisted, INTERVIEW_SCHEDULED → Interview scheduled. */
+const humanise = (s: string) =>
+  String(s).toLowerCase().replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+
+interface KpiCardData {
+  label: string;
+  color: string;
+  icon: typeof Users;
+  highlight?: boolean;
+  href?: string;
+}
+
+/**
+ * A summary tile. It links to the page the number comes from when the signed-in user is
+ * allowed to open it — previously the tiles looked interactive (the first one even
+ * carries a highlight ring) but did nothing when clicked.
+ */
+function KpiCard({ card, user, children }: { card: KpiCardData; user: any; children: React.ReactNode }) {
+  const border = card.highlight ? 'border-primary-200 ring-1 ring-primary-200' : 'border-gray-100';
+  const body = (
+    <>
+      <div>{children}</div>
+      <div className={`${card.color} w-10 h-10 rounded-lg flex items-center justify-center shrink-0`}>
+        <card.icon size={18} className="text-white" />
+      </div>
+    </>
+  );
+
+  if (!card.href || !canViewPath(user, card.href)) {
+    return <div className={`bg-white rounded-xl border ${border} p-5 flex items-start justify-between`}>{body}</div>;
+  }
+  return (
+    <Link href={card.href}
+      className={`bg-white rounded-xl border ${border} p-5 flex items-start justify-between transition-colors hover:border-primary-300 hover:bg-primary-50/30`}>
+      {body}
+    </Link>
+  );
+}
+
 export default function AdminDashboard() {
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => api.get('/dashboard/stats').then(r => r.data),
   });
   const { fmtCurrency, settings } = useSettings();
+  const user = useAuth(s => s.user);
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
@@ -34,15 +76,20 @@ export default function AdminDashboard() {
   const charts = data?.charts  || {};
   const recent = data?.recentActivity || {};
 
+  // "+6 this month" next to a total of 6 read like a growth delta on the total, so the
+  // subtitle now says plainly how many were added.
+  const addedThisMonth = kpis.newCandidatesThisMonth || 0;
+
   const operationalKpis = [
-    { label:'Total Candidates',   value: kpis.totalCandidates,         icon: Users,       color:'bg-blue-500',    change:`+${kpis.newCandidatesThisMonth||0} this month` },
-    { label:'Active Clients',     value: kpis.totalClients,            icon: Building2,   color:'bg-primary-400', change:'Total clients' },
-    { label:'Open Jobs',          value: kpis.openJobs,                icon: Briefcase,   color:'bg-green-500',   change:`${kpis.totalJobs||0} total jobs` },
-    { label:'Active Employees',   value: kpis.activeEmployees,         icon: UserCheck,   color:'bg-purple-500',  change:`${kpis.totalEmployees||0} total` },
-    { label:'Pending Follow-Ups', value: kpis.pendingFollowUps,        icon: Clock,       color:'bg-orange-500',  change:'Requires attention' },
-    { label:'Pending Leaves',     value: kpis.pendingLeaves,           icon: AlertCircle, color:'bg-red-500',     change:'Awaiting approval' },
-    { label:'Expiring Docs',      value: kpis.expiringDocs,            icon: AlertCircle, color:'bg-yellow-500',  change:'Within 30 days' },
-    { label:'New This Month',     value: kpis.newCandidatesThisMonth,  icon: TrendingUp,  color:'bg-teal-500',    change:'Candidates' },
+    { label:'Total Candidates',   value: kpis.totalCandidates,         icon: Users,       color:'bg-blue-500',    href:'/admin/candidates',
+      change: addedThisMonth ? `${addedThisMonth} added this month` : 'None added this month' },
+    { label:'Active Clients',     value: kpis.totalClients,            icon: Building2,   color:'bg-primary-400', change:'Total clients',        href:'/admin/crm' },
+    { label:'Open Jobs',          value: kpis.openJobs,                icon: Briefcase,   color:'bg-green-500',   change:`${kpis.totalJobs||0} total jobs`, href:'/admin/jobs' },
+    { label:'Active Employees',   value: kpis.activeEmployees,         icon: UserCheck,   color:'bg-purple-500',  change:`${kpis.totalEmployees||0} total`, href:'/admin/employees' },
+    { label:'Pending Follow-Ups', value: kpis.pendingFollowUps,        icon: Clock,       color:'bg-orange-500',  change:'Requires attention',   href:'/admin/crm/follow-ups' },
+    { label:'Pending Leaves',     value: kpis.pendingLeaves,           icon: AlertCircle, color:'bg-red-500',     change:'Awaiting approval',    href:'/admin/leave' },
+    { label:'Expiring Docs',      value: kpis.expiringDocs,            icon: AlertCircle, color:'bg-yellow-500',  change:'Within 30 days',       href:'/admin/documents' },
+    { label:'New This Month',     value: kpis.newCandidatesThisMonth,  icon: TrendingUp,  color:'bg-teal-500',    change:'Candidates',           href:'/admin/candidates' },
   ];
 
   const revenueKpis = [
@@ -53,6 +100,7 @@ export default function AdminDashboard() {
       color: 'bg-indigo-500',
       change: `${settings.currency} YTD invoiced`,
       highlight: true,
+      href: '/admin/crm/invoices',
     },
     {
       label: 'Paid Revenue',
@@ -60,6 +108,7 @@ export default function AdminDashboard() {
       icon: CheckCircle2,
       color: 'bg-emerald-500',
       change: 'Collected this year',
+      href: '/admin/crm/invoices',
     },
     {
       label: 'Pending Collection',
@@ -67,13 +116,17 @@ export default function AdminDashboard() {
       icon: DollarSign,
       color: 'bg-amber-500',
       change: 'Sent / awaiting payment',
+      href: '/admin/crm/invoices',
     },
     {
       label: 'Overdue Invoices',
       value: kpis.overdueInvoices || 0,
       icon: FileText,
       color: 'bg-red-500',
-      change: 'Require immediate follow-up',
+      // Non-breaking hyphen: the card is narrow enough that a normal hyphen let the
+      // browser split the word into "follow-" / "up".
+      change: 'Require immediate follow‑up',
+      href: '/admin/crm/invoices',
     },
   ];
 
@@ -100,17 +153,11 @@ export default function AdminDashboard() {
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {revenueKpis.map(card => (
-            <div key={card.label}
-              className={`bg-white rounded-xl border p-5 flex items-start justify-between ${card.highlight ? 'border-primary-200 ring-1 ring-primary-200' : 'border-gray-100'}`}>
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">{card.label}</p>
-                <p className={`text-xl font-black ${card.highlight ? 'text-primary-600' : 'text-gray-900'}`}>{card.value ?? '—'}</p>
-                <p className="text-xs text-gray-400 mt-1">{card.change}</p>
-              </div>
-              <div className={`${card.color} w-10 h-10 rounded-lg flex items-center justify-center shrink-0`}>
-                <card.icon size={18} className="text-white"/>
-              </div>
-            </div>
+            <KpiCard key={card.label} card={card} user={user}>
+              <p className="text-xs font-medium text-gray-500 mb-1">{card.label}</p>
+              <p className={`text-xl font-black ${card.highlight ? 'text-primary-600' : 'text-gray-900'}`}>{card.value ?? '—'}</p>
+              <p className="text-xs text-gray-400 mt-1">{card.change}</p>
+            </KpiCard>
           ))}
         </div>
 
@@ -132,16 +179,11 @@ export default function AdminDashboard() {
         <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">Operations Overview</h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {operationalKpis.map(card => (
-            <div key={card.label} className="bg-white rounded-xl border border-gray-100 p-5 flex items-start justify-between">
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">{card.label}</p>
-                <p className="text-3xl font-bold text-gray-900">{card.value ?? '—'}</p>
-                <p className="text-xs text-gray-400 mt-1">{card.change}</p>
-              </div>
-              <div className={`${card.color} w-10 h-10 rounded-lg flex items-center justify-center shrink-0`}>
-                <card.icon size={18} className="text-white"/>
-              </div>
-            </div>
+            <KpiCard key={card.label} card={card} user={user}>
+              <p className="text-xs font-medium text-gray-500 mb-1">{card.label}</p>
+              <p className="text-3xl font-bold text-gray-900">{card.value ?? '—'}</p>
+              <p className="text-xs text-gray-400 mt-1">{card.change}</p>
+            </KpiCard>
           ))}
         </div>
       </div>
@@ -190,7 +232,15 @@ export default function AdminDashboard() {
                     <Cell key={index} fill={COLORS[index % COLORS.length]}/>
                   ))}
                 </Pie>
-                <Tooltip contentStyle={{fontSize:11,borderRadius:8}}/>
+                {/* Pinned above the donut rather than following the cursor, which put the
+                    box on top of the segment being pointed at. */}
+                <Tooltip
+                  position={{ x: 0, y: 0 }}
+                  offset={0}
+                  cursor={false}
+                  formatter={(value: number, name: string) => [value, humanise(name)]}
+                  contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #e5e7eb', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
+                />
               </PieChart>
             </ResponsiveContainer>
           ) : (
