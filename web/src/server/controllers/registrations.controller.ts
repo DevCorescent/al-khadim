@@ -1,15 +1,15 @@
 // Ported from api/src/routes/registrations.js
 import crypto from 'crypto';
-import { unlink } from 'fs/promises';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { requirePermission } from '../permissions';
 import { HttpError, body, handler, json, query } from '../http';
-import { absoluteUploadPath, parseUpload } from '../upload';
+import { parseUpload } from '../upload';
 import { generateCvId } from '../utils/cvId';
 import { sendMail } from '../utils/mailer';
 import { sendTemplatedMail } from '../utils/templateRenderer';
 import { escapeHtml, pickFields } from '../validate';
+import { deleteUpload } from '../storage';
 
 const WEB_URL = process.env.WEB_URL || 'http://localhost:3000';
 
@@ -275,12 +275,8 @@ export const remove = handler<{ id: string }>(async (req, { params }) => {
   const removedFiles: string[] = [];
   for (const p of [reg.cvPath, reg.photo]) {
     if (!p || stillUsed.has(p)) continue;
-    try {
-      await unlink(absoluteUploadPath(p));
-      removedFiles.push(p);
-    } catch {
-      /* already gone from disk */
-    }
+    await deleteUpload(p);
+    removedFiles.push(p);
   }
 
   return json({ message: 'Registration deleted', removedFiles });

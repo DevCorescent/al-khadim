@@ -44,7 +44,7 @@ export default function ProfileRequestsPage() {
   data.forEach((r: any) => { counts[r.status] = (counts[r.status] || 0) + 1; });
 
   return (
-    <div className="p-6 max-w-5xl">
+    <div className="p-6 w-full">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Profile Requests</h1>
         <p className="text-gray-500 text-sm mt-1">Recruiters and companies requesting candidate profiles from the talent pool</p>

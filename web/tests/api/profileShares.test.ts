@@ -5,6 +5,7 @@ import { StaffUser, staffUsers, staffWithCustomRole } from './_rbacRecruitment';
 import {
   companyUser, createCandidate, createClient, createJob, createTrackingIndustry, deleteCandidate, sentEmails,
 } from './_recruitment';
+import { disconnectDb, prisma } from './_emailDb';
 
 const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL || 'admin@alkhadim.ae';
 
@@ -50,6 +51,7 @@ describe('profile-shares', () => {
     await otherPortal?.cleanup();
     for (const c of [client, otherClient]) if (c) await api('DELETE', `/clients/${c.id}`, undefined, { token });
     if (industry) await api('DELETE', `/industries/${industry.id}`, undefined, { token });
+    await disconnectDb();
   });
 
   /* ── auth ── */
@@ -75,7 +77,10 @@ describe('profile-shares', () => {
   /* ── create ── */
 
   test('create validates input', async () => {
-    const base = { candidateId: candidate.id, clientId: client.id, sharedFields: ['firstName'] };
+    const base = { candidateId: candidate.id, clientId: client.id, jobId: job.id, sharedFields: ['firstName'] };
+    const noJob = await api('POST', '/profile-shares', { ...base, jobId: undefined }, { token });
+    expectStatus(noJob, 400);
+    assert.match(noJob.data.error, /job order/i);
     expectStatus(await api('POST', '/profile-shares', { clientId: client.id, sharedFields: ['firstName'] }, { token }), 400);
     expectStatus(await api('POST', '/profile-shares', { ...base, sharedFields: [] }, { token }), 400);
     expectStatus(await api('POST', '/profile-shares', { ...base, sharedFields: ['notes', 'cvId'] }, { token }), 400);
@@ -120,14 +125,15 @@ describe('profile-shares', () => {
     assert.ok(html.includes(`/company/view/${accessToken}`));
   });
 
-  test('a share without a job (for the no-job checks)', async () => {
+  test('a legacy general-profile share (no job) keeps working', async () => {
+    // New shares always need a job order; older general-profile shares still exist in the DB.
     const res = await api('POST', '/profile-shares', {
-      candidateId: candidate.id, clientId: client.id, sharedFields: ['firstName'],
+      candidateId: candidate.id, clientId: client.id, jobId: job.id, sharedFields: ['firstName'],
     }, { token });
     expectStatus(res, 201);
     noJobShareId = res.data.id;
     assert.equal(res.data.method, 'PORTAL');
-    assert.equal(res.data.jobId, null);
+    await prisma.profileShare.update({ where: { id: noJobShareId }, data: { jobId: null } });
   });
 
   test('list filters and paginates', async () => {
@@ -287,7 +293,10 @@ describe('profile-shares', () => {
     expectStatus(await api('POST', url, { action: 'REQUEST_INTERVIEW', preferredAt: '2026-12-01T10:00', interviewerEmails: '' }, { token: portal.token }), 400);
     expectStatus(await api('POST', url, { action: 'SHORTLIST', reason: { a: 1 } }, { token: portal.token }), 400);
     expectStatus(await api('POST', url, { action: 'SHORTLIST' }, { token: otherPortal.token }), 404);
-    expectStatus(await api('POST', `/profile-shares/mine/${noJobShareId}/respond`, { action: 'SHORTLIST' }, { token: portal.token }), 400);
+    // A general-profile share (no job) can be shortlisted too; only the share records it.
+    const noJob = await api('POST', `/profile-shares/mine/${noJobShareId}/respond`, { action: 'SHORTLIST' }, { token: portal.token });
+    expectStatus(noJob, 200);
+    assert.equal(noJob.data.status, 'SHORTLISTED');
   });
 
   test('respond shortlists, updates the application and escapes the staff email (regression)', async () => {

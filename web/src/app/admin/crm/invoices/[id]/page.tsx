@@ -46,7 +46,11 @@ export default function InvoiceViewPage() {
     if (!win) return;
     win.document.write(html);
     win.document.close();
-    setTimeout(() => { win.focus(); win.print(); }, 600);
+    // Print once images (the logo) have loaded, or after 3s at most.
+    const images = Array.from(win.document.images);
+    const loaded = Promise.all(images.map(img => img.complete ? null : new Promise(r => { img.onload = img.onerror = r; })));
+    Promise.race([loaded, new Promise(r => setTimeout(r, 3000))])
+      .then(() => setTimeout(() => { win.focus(); win.print(); }, 200));
   }
 
   const [payOpen, setPayOpen] = useState(false);
@@ -140,7 +144,7 @@ export default function InvoiceViewPage() {
       </div>
 
       {/* Document */}
-      <div className="max-w-3xl mx-auto p-6">
+      <div className="w-full p-6">
         <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
           {/* Header */}
           <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-700 text-white px-8 py-6">

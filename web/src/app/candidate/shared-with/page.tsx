@@ -24,7 +24,7 @@ export default function SharedWithPage() {
   });
 
   return (
-    <div className="p-4 sm:p-6 max-w-3xl mx-auto">
+    <div className="p-4 sm:p-6 w-full">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Shared With</h1>
         <p className="text-gray-500 text-sm mt-1">Companies your profile has been shared with</p>

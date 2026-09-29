@@ -1,0 +1,6 @@
+import * as clientDocuments from '@/server/controllers/clientDocuments.controller';
+
+export const dynamic = 'force-dynamic';
+
+export const GET = clientDocuments.getOnboarding;
+export const PUT = clientDocuments.saveOnboarding;

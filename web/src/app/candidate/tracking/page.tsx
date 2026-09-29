@@ -22,7 +22,7 @@ export default function CandidateTrackingPage() {
   const active = list.find((r: any) => r.industry.key === activeIndustry) || list[0];
 
   return (
-    <div className="p-4 sm:p-6 max-w-3xl mx-auto">
+    <div className="p-4 sm:p-6 w-full">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 tracking-tight">My Tracking</h1>
         <p className="text-gray-500 text-sm mt-1">Progress Al Khadim has shared with you for your placement</p>

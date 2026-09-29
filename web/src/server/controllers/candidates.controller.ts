@@ -1,5 +1,4 @@
 // Ported from api/src/routes/candidates.js
-import { unlink } from 'fs/promises';
 import { prisma } from '@/lib/prisma';
 import { CandidateStatus, Prisma } from '@/generated/prisma/client';
 import { requirePermission } from '../permissions';
@@ -10,6 +9,7 @@ import { extractCv } from '../utils/cvExtract';
 import { generateCvId } from '../utils/cvId';
 import { isValidYouTubeUrl } from '../utils/youtube';
 import { pagination, pickFields, scalarFields, toDate, toNumber } from '../validate';
+import { deleteUpload, withLocalCopy } from '../storage';
 
 const CATEGORY_INDUSTRY_INCLUDE = {
   category: { select: { id: true, name: true, color: true } },
@@ -255,11 +255,11 @@ export const parseCv = handler(async (req) => {
   const { file } = await parseUpload(req, ['cv']);
   if (!file) return json({ error: 'No CV file uploaded' }, 400);
   if (!CV_MIME_TYPES.includes(file.mimetype)) {
-    await unlink(absoluteUploadPath(file.path)).catch(() => {});
+    await deleteUpload(file.path);
     return json({ error: 'CV must be a PDF or Word document' }, 400);
   }
   try {
-    const parsed = await extractCv(absoluteUploadPath(file.path));
+    const parsed = await withLocalCopy(file.path, extractCv);
     delete parsed._debug;
     delete parsed._meta;
     return json({ parsed, cvPath: file.path });
@@ -472,12 +472,8 @@ export const remove = handler<{ id: string }>(async (req, { params }) => {
   let removedFiles = 0;
   for (const p of new Set(files)) {
     if (keep.has(p)) continue;
-    try {
-      await unlink(absoluteUploadPath(p));
-      removedFiles++;
-    } catch {
-      /* already gone from disk */
-    }
+    await deleteUpload(p);
+    removedFiles++;
   }
 
   return json({ message: 'Candidate deleted', removedFiles });

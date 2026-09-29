@@ -13,6 +13,7 @@ import { sendTemplatedMail } from '../utils/templateRenderer';
 import { nextStatus } from '../utils/profileShareStatus';
 import { ALL_SHAREABLE_FIELDS } from '../constants/shareableFields';
 import { escapeHtml, pagination, toDate } from '../validate';
+import { interviewLocked } from '../utils/recruitmentSettings';
 
 const SHARE_METHODS = ['PORTAL', 'EMAIL', 'BOTH'];
 const SHARE_STATUSES = ['SENT', 'VIEWED', 'DOWNLOADED', 'SHORTLISTED', 'REJECTED', 'INTERVIEW_REQUESTED', 'INTERVIEW_SCHEDULED', 'WITHDRAWN'];
@@ -181,6 +182,9 @@ async function createProfileShare({ candidateId, clientId, jobId, sharedFields =
   if (validFields.length === 0 && sharedDocumentIds.length === 0) {
     throw { status: 400, message: 'Select at least one field or document to share' };
   }
+  // Every share is for a specific job order, so shortlisting, the application
+  // status and interview scheduling always have a job to attach to.
+  if (!jobId) throw { status: 400, message: 'Choose the job order this profile is being shared for' };
 
   const [candidate, client, job] = await Promise.all([
     prisma.candidate.findUnique({ where: { id: candidateId } }),
@@ -194,6 +198,12 @@ async function createProfileShare({ candidateId, clientId, jobId, sharedFields =
   }
 
   const documents = await resolveDocuments(candidateId, sharedDocumentIds, candidate);
+  if (validFields.length === 0 && documents.length === 0) {
+    throw {
+      status: 400,
+      message: `${candidate.firstName} ${candidate.lastName} has no CV or documents on file, so nothing would be shared. Select at least one profile field.`,
+    };
+  }
   const snapshotData = buildSnapshot(candidate, validFields, documents);
 
   const accessToken = crypto.randomBytes(32).toString('hex');
@@ -450,7 +460,10 @@ export const mineGet = handler<{ id: string }>(async (req, { params }) => {
     logEvent(share.id, { eventType: 'VIEWED', actorType: 'CLIENT_USER', actorId: clientUser.id, actorName: clientUser.name }),
   ]);
 
-  return json(safeShareView({ ...share, status: updatedStatus }));
+  return json({
+    ...safeShareView({ ...share, status: updatedStatus }),
+    interviewLocked: await interviewLocked(updatedStatus),
+  });
 });
 
 export const mineDownloadDocument = handler<{ id: string; docId: string }>(async (req, { params }) => {
@@ -518,9 +531,10 @@ export const mineRespond = handler<{ id: string }>(async (req, { params }) => {
   if (!share || share.clientId !== client.id) return json({ error: 'Share not found' }, 404);
   if (share.status === 'WITHDRAWN') return json({ error: 'This profile is no longer available' }, 410);
 
-  if ((action === 'SHORTLIST' || action === 'REJECT') && !share.jobId) {
-    return json({ error: 'This share has no associated job order — ask Al Khadim staff to re-share against a specific job to shortlist or reject.' }, 400);
+  if (action === 'REQUEST_INTERVIEW' && await interviewLocked(share.status)) {
+    return json({ error: 'This candidate is already shortlisted and cannot be moved back to interview. Contact Al Khadim if you need a change.' }, 409);
   }
+
 
   const newStatus: any = nextStatus(share.status, ACTIONS[action]);
 
@@ -545,12 +559,13 @@ export const mineRespond = handler<{ id: string }>(async (req, { params }) => {
           : (reason ? { reason } : null),
       } as any,
     });
-    if (action === 'SHORTLIST' || action === 'REJECT') {
+    // A general-profile share (no job) records the decision on the share only.
+    if ((action === 'SHORTLIST' || action === 'REJECT') && share.jobId) {
       // Mirror the decision onto the application, but never move it backwards: once staff have
       // taken it further (interview/offer/placement) that status stays. The share above still
       // records the company's response and staff are notified below.
       const current = await tx.candidateJob.findUnique({
-        where: { candidateId_jobId: { candidateId: share.candidateId, jobId: share.jobId } },
+        where: { candidateId_jobId: { candidateId: share.candidateId, jobId: share.jobId! } },
         select: { status: true },
       });
       if (!current || !APPLICATION_STAGES_KEPT_ON[action].includes(current.status)) {
@@ -758,7 +773,7 @@ export const scheduleInterview = handler<{ id: string }>(async (req, { params })
       // A further interview round is fine (e.g. INTERVIEWED → INTERVIEW_SCHEDULED), but an
       // offered/placed application keeps its status; the interview itself is still created.
       const currentApp = await tx.candidateJob.findUnique({
-        where: { candidateId_jobId: { candidateId: share.candidateId, jobId: share.jobId } },
+        where: { candidateId_jobId: { candidateId: share.candidateId, jobId: share.jobId! } },
         select: { status: true },
       });
       if (!currentApp || !APPLICATION_STAGES_KEPT_ON.SCHEDULE_INTERVIEW.includes(currentApp.status)) {
@@ -906,8 +921,8 @@ export const resend = handler<{ id: string }>(async (req, { params }) => {
     subjectOverride: `Reminder: candidate profile shared with ${share.client.companyName}${share.job ? ` — ${share.job.title}` : ''}`,
     data: { companyName: share.client.companyName, jobTitleBlock: share.job ? ` — ${escapeHtml(share.job.title)}` : '', viewLink: link },
   });
-  await logEvent(share.id, { eventType: 'RESENT', actorType: 'STAFF', actorId: user.id, actorName: user.name });
-  return json({ message: 'Share resent' });
+  await logEvent(share.id, { eventType: 'RESENT', actorType: 'STAFF', actorId: user.id, actorName: user.name, metadata: { to: recipient } });
+  return json({ message: `Reminder sent to ${recipient}`, to: recipient });
 });
 
 export const withdraw = handler<{ id: string }>(async (req, { params }) => {

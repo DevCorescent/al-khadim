@@ -63,6 +63,8 @@ interface Props {
     client?: { id: string; companyName: string };
     snapshotData: { fields: Record<string, any>; documents: any[] };
     interview?: InterviewInfo | null;
+    /** Shortlisted and the Super Admin's lock is on: no moving back to interview. */
+    interviewLocked?: boolean;
   };
   mode: 'portal' | 'public';
   onDownload?: (docId: string, title: string) => void;
@@ -113,7 +115,7 @@ export default function ProfileShareView({ data, mode, onDownload, onView, onRes
   }
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className="w-full">
       {/* Header card */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -142,7 +144,14 @@ export default function ProfileShareView({ data, mode, onDownload, onView, onRes
           <p className="text-sm font-semibold text-gray-600">This profile is no longer available</p>
         </div>
       ) : (
-        <>
+        <div className="grid xl:grid-cols-3 gap-5 items-start">
+          <div className="xl:col-span-2 min-w-0">
+          {Object.keys(fields).length === 0 && documents.length === 0 && !isValidYouTubeUrl(fields.introVideoUrl) && (
+            <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-8 mb-5 text-center">
+              <p className="text-sm font-semibold text-gray-600">No profile details were shared yet</p>
+              <p className="text-xs text-gray-400 mt-1">Al Khadim hasn&apos;t included any details or documents with this profile. You can still record your decision, or contact Al Khadim for more information.</p>
+            </div>
+          )}
           {/* Intro video */}
           {isValidYouTubeUrl(fields.introVideoUrl) && (
             <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-5">
@@ -214,6 +223,9 @@ export default function ProfileShareView({ data, mode, onDownload, onView, onRes
             </div>
           )}
 
+          </div>
+
+          <div className="min-w-0 xl:sticky xl:top-4">
           {/* Interview details (once scheduled by Al Khadim) */}
           {interviewScheduled && data.interview && (
             <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-5 mb-5">
@@ -252,11 +264,11 @@ export default function ProfileShareView({ data, mode, onDownload, onView, onRes
             <div className="bg-white rounded-2xl border border-gray-200 p-5">
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Your Decision</h3>
               <div className="flex flex-wrap gap-2 mb-3">
-                <button onClick={() => submitRespond('SHORTLIST')} disabled={responding}
+                {data.status !== 'SHORTLISTED' && <button onClick={() => submitRespond('SHORTLIST')} disabled={responding}
                   className="flex items-center gap-1.5 bg-emerald-500 text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-emerald-600 transition-colors disabled:opacity-50">
                   <Star size={14} /> Shortlist
-                </button>
-                {!interviewRequested && !interviewScheduled && (
+                </button>}
+                {!interviewRequested && !interviewScheduled && !data.interviewLocked && (
                   <button onClick={() => submitRespond('REQUEST_INTERVIEW')} disabled={responding}
                     className="flex items-center gap-1.5 bg-amber-500 text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-amber-600 transition-colors disabled:opacity-50">
                     <Calendar size={14} /> Request Interview
@@ -267,9 +279,9 @@ export default function ProfileShareView({ data, mode, onDownload, onView, onRes
                   <XCircle size={14} /> Reject
                 </button>
               </div>
-              {!data.job && (
-                <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
-                  Shortlist/Reject require this profile to be linked to a job order — ask Al Khadim to re-share for a specific role.
+              {data.interviewLocked && (
+                <p className="text-xs text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2 mb-2">
+                  This candidate is shortlisted, so they can no longer be moved to interview. Contact Al Khadim if you need a change.
                 </p>
               )}
               {reasonOpen === 'REQUEST_INTERVIEW' && (
@@ -312,7 +324,8 @@ export default function ProfileShareView({ data, mode, onDownload, onView, onRes
               <a href="/company/login" className="btn-primary text-sm px-5 py-2 inline-flex">Log in to Company Portal</a>
             </div>
           ) : null}
-        </>
+          </div>
+        </div>
       )}
     </div>
   );

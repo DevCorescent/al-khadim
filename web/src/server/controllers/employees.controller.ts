@@ -1,11 +1,11 @@
 // Ported from api/src/routes/employees.js
-import { existsSync, unlinkSync } from 'fs';
 import { prisma } from '@/lib/prisma';
 import { EmployeeStatus, Prisma } from '@/generated/prisma/client';
 import { requirePermission } from '../permissions';
 import { HttpError, handler, json, query } from '../http';
-import { absoluteUploadPath, parseUpload } from '../upload';
+import { parseUpload } from '../upload';
 import { pagination, pickFields, scalarFields, toDate, toNumber } from '../validate';
+import { deleteUpload } from '../storage';
 
 const STATUSES = Object.values(EmployeeStatus) as string[];
 
@@ -16,11 +16,7 @@ const DATE_FIELDS = ['joiningDate', 'terminationDate', 'passportExpiry', 'visaEx
 
 /** Deletes a stored upload (a failed request's file, or a replaced/removed photo). */
 function discardUpload(stored?: string) {
-  if (!stored) return;
-  try {
-    const abs = absoluteUploadPath(stored);
-    if (existsSync(abs)) unlinkSync(abs);
-  } catch { /* best effort */ }
+  void deleteUpload(stored); // best effort
 }
 
 export const list = handler(async (req) => {

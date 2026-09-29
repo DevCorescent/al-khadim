@@ -20,6 +20,7 @@ const breadcrumbs: Record<string, { label: string; parent?: string; parentHref?:
   '/admin/finance/budgets':           { label: 'Budgets',          parent: 'Finance' },
   '/admin/candidates':                { label: 'Candidates',       parent: 'Recruitment' },
   '/admin/candidates/registrations':  { label: 'CV Registrations', parent: 'Recruitment' },
+  '/admin/profile-changes':           { label: 'Profile Approvals', parent: 'Recruitment' },
   '/admin/profile-requests':          { label: 'Profile Requests', parent: 'Recruitment' },
   '/admin/profile-shares':            { label: 'Profile Shares',   parent: 'Recruitment' },
   '/admin/candidate-tracking':        { label: 'Candidate Tracking', parent: 'Recruitment' },

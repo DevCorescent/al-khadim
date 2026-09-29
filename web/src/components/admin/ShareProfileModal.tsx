@@ -24,7 +24,7 @@ export default function ShareProfileModal({ isOpen, onClose, candidate, initialC
   const [jobId, setJobId] = useState(initialJobId);
   const [method, setMethod] = useState<'PORTAL' | 'EMAIL' | 'BOTH'>('BOTH');
   const [message, setMessage] = useState('');
-  const [fields, setFields] = useState<string[]>([]);
+  const [fields, setFields] = useState<string[]>(['firstName', 'lastName']);
   const [docIds, setDocIds] = useState<string[]>([]);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -62,7 +62,7 @@ export default function ShareProfileModal({ isOpen, onClose, candidate, initialC
   });
 
   function reset() {
-    setClientId(initialClientId); setJobId(initialJobId); setMethod('BOTH'); setMessage(''); setFields([]); setDocIds([]); setShowPreview(false);
+    setClientId(initialClientId); setJobId(initialJobId); setMethod('BOTH'); setMessage(''); setFields(['firstName', 'lastName']); setDocIds([]); setShowPreview(false);
   }
 
   const selectedJob = (jobs || []).find((j: any) => j.id === jobId);
@@ -76,7 +76,7 @@ export default function ShareProfileModal({ isOpen, onClose, candidate, initialC
     setDocIds(d => d.includes(id) ? d.filter(x => x !== id) : [...d, id]);
   }
 
-  const canSubmit = clientId && (fields.length > 0 || docIds.length > 0);
+  const canSubmit = clientId && jobId && (fields.length > 0 || docIds.length > 0);
 
   return (
     <Modal isOpen={isOpen} onClose={() => { reset(); onClose(); }} title={`Share ${candidate?.firstName}'s Profile`} size="lg">
@@ -91,11 +91,14 @@ export default function ShareProfileModal({ isOpen, onClose, candidate, initialC
             </select>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job (optional)</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job order *</label>
             <select className="input text-sm" value={jobId} onChange={e => setJobId(e.target.value)} disabled={!clientId}>
-              <option value="">General profile</option>
+              <option value="" disabled>{clientId ? 'Select a job…' : 'Select a company first'}</option>
               {(jobs || []).map((j: any) => <option key={j.id} value={j.id}>{j.title}</option>)}
             </select>
+            {clientId && jobs && jobs.length === 0 && (
+              <p className="text-[11px] text-amber-600 mt-1">This company has no job orders yet. Create one under Recruitment → Job Orders first.</p>
+            )}
           </div>
         </div>
 
@@ -221,7 +224,7 @@ export default function ShareProfileModal({ isOpen, onClose, candidate, initialC
         >
           {shareMutation.isPending ? 'Sharing…' : 'Share Profile'}
         </button>
-        {!canSubmit && <p className="text-xs text-gray-400 text-center">Select a company and at least one field or document</p>}
+        {!canSubmit && <p className="text-xs text-gray-400 text-center">Select a company, a job order and at least one field or document</p>}
       </div>
     </Modal>
   );

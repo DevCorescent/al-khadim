@@ -45,7 +45,7 @@ export default function CandidateJobsPage() {
   apps.forEach(a => { counts[a.status] = (counts[a.status] || 0) + 1; });
 
   return (
-    <div className="p-4 sm:p-6 max-w-4xl mx-auto">
+    <div className="p-4 sm:p-6 w-full">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 tracking-tight">My Applications</h1>
         <p className="text-gray-500 text-sm mt-1">Track the status of all your job applications</p>

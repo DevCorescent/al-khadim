@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
@@ -8,8 +8,9 @@ import toast from 'react-hot-toast';
 import {
   Building2, Search, Plus, Pencil, Trash2, Eye, Phone, Mail,
   MapPin, Briefcase, DollarSign, CheckCircle2,
-  LayoutGrid, List, Upload,
+  LayoutGrid, List, Upload, FileText, AlertTriangle, BadgeCheck,
 } from 'lucide-react';
+import { useAuth } from '@/lib/auth';
 import { useIndustries } from '@/lib/taxonomy';
 import ExportMenu from '@/components/admin/ExportMenu';
 import ImportCSVModal from '@/components/admin/ImportCSVModal';
@@ -57,6 +58,81 @@ function StatCard({ label, value, icon: Icon, color }: any) {
   );
 }
 
+const fmtDue = (d: string) => new Date(d).toLocaleDateString('en-AE', { day: 'numeric', month: 'short' });
+
+/** Every requested document has been approved. */
+const isVerified = (docs: any) => !!docs && docs.total > 0 && docs.approved === docs.total;
+
+function VerifiedBadge({ docs }: { docs: any }) {
+  if (!isVerified(docs)) return null;
+  return (
+    <span title="All requested business documents are approved"
+      className="inline-flex items-center gap-0.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 shrink-0">
+      <BadgeCheck size={11} /> Verified
+    </span>
+  );
+}
+
+/** Chips summarising a client's requested documents (Super Admin only; `docs` is null for others). */
+function DocChips({ docs }: { docs: any }) {
+  const open = docs.requested + docs.rejected;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {docs.overdue > 0 && (
+        <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">
+          <AlertTriangle size={9} /> {docs.overdue} overdue
+        </span>
+      )}
+      {open - docs.overdue > 0 && (
+        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">{open - docs.overdue} not uploaded</span>
+      )}
+      {docs.uploaded > 0 && (
+        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">{docs.uploaded} to review</span>
+      )}
+    </div>
+  );
+}
+
+function DocumentStatus({ docs, onOpen }: { docs: any; onOpen: () => void }) {
+  // Not a Super Admin (undefined) or nothing requested yet (null): show nothing.
+  if (!docs) return null;
+  if (isVerified(docs)) {
+    return (
+      <button type="button" onClick={onOpen} title="Open this client's documents"
+        className="w-full mb-4 flex items-center gap-1.5 rounded-xl border border-emerald-100 bg-emerald-50/50 px-2.5 py-2 text-[11px] font-semibold text-emerald-700 hover:border-emerald-200">
+        <BadgeCheck size={13} /> Verified · all {docs.total} documents approved
+      </button>
+    );
+  }
+  const received = docs.uploaded + docs.approved;
+  const pct = docs.total ? Math.round((docs.approved / docs.total) * 100) : 0;
+  const tone = docs.overdue > 0 ? 'border-red-100 bg-red-50/40' : docs.requested + docs.rejected > 0 ? 'border-amber-100 bg-amber-50/40' : 'border-gray-100';
+  return (
+    <button type="button" onClick={onOpen} title="Open this client's documents"
+      className={`w-full text-left mb-4 rounded-xl border p-2.5 space-y-1.5 hover:border-primary-200 transition-colors ${tone}`}>
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-1 text-[11px] font-bold text-gray-600"><FileText size={11} /> Documents</span>
+        <span className="text-[10px] font-semibold text-gray-500">{received}/{docs.total} uploaded · {docs.approved} approved</span>
+      </div>
+      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+        <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${pct}%` }} />
+      </div>
+      <DocChips docs={docs} />
+      {docs.missing?.length > 0 && (
+        <p className="text-[10px] text-gray-500 leading-snug">
+          <span className="font-semibold text-gray-600">Missing: </span>
+          {docs.missing.slice(0, 3).map((m: any, i: number) => (
+            <span key={i} className={m.overdue ? 'text-red-600 font-semibold' : ''}>
+              {i > 0 && ', '}{m.title}{m.rejected ? ' (re-upload)' : ''}{m.dueDate ? ` · due ${fmtDue(m.dueDate)}` : ''}
+            </span>
+          ))}
+          {docs.missing.length > 3 && <span> +{docs.missing.length - 3} more</span>}
+        </p>
+      )}
+    </button>
+  );
+}
+
 function ClientCard({ client, onEdit, onDelete, onView }: any) {
   const totalRevenue = client.totalRevenue || 0;
   const paidRevenue  = client.paidRevenue  || 0;
@@ -72,7 +148,9 @@ function ClientCard({ client, onEdit, onDelete, onView }: any) {
               <span className="text-primary-600 font-bold text-lg">{client.companyName[0]}</span>
             </div>
             <div>
-              <p className="font-bold text-gray-900 text-sm leading-snug">{client.companyName}</p>
+              <p className="font-bold text-gray-900 text-sm leading-snug flex flex-wrap items-center gap-1.5">
+                {client.companyName} <VerifiedBadge docs={client.documents} />
+              </p>
               {(client.industryRef?.name || client.industry) && <p className="text-[10px] text-gray-400 font-medium mt-0.5">{client.industryRef?.name || client.industry}</p>}
             </div>
           </div>
@@ -123,6 +201,8 @@ function ClientCard({ client, onEdit, onDelete, onView }: any) {
           </div>
         )}
 
+        <DocumentStatus docs={client.documents} onOpen={() => onView(client.id, 'Documents')} />
+
         {/* Actions */}
         <div className="flex items-center gap-2">
           <button onClick={() => onView(client.id)}
@@ -143,7 +223,7 @@ function ClientCard({ client, onEdit, onDelete, onView }: any) {
   );
 }
 
-function ClientRow({ client, onEdit, onDelete, onView }: any) {
+function ClientRow({ client, onEdit, onDelete, onView, showDocs }: any) {
   const totalRevenue = client.totalRevenue || 0;
   const paidRevenue  = client.paidRevenue  || 0;
   return (
@@ -167,6 +247,20 @@ function ClientRow({ client, onEdit, onDelete, onView }: any) {
       <td className="px-4 py-3 text-sm font-semibold text-indigo-600">
         {totalRevenue > 0 ? `AED ${(totalRevenue/1000).toFixed(0)}k` : '—'}
       </td>
+      {showDocs && (
+        <td className="px-4 py-3">
+          {isVerified(client.documents) ? (
+            <span className="text-[11px] font-semibold text-emerald-700">All {client.documents.total} approved</span>
+          ) : client.documents ? (
+            <button onClick={() => onView(client.id, 'Documents')} className="text-left space-y-1" title="Open this client's documents">
+              <p className="text-[11px] font-semibold text-gray-600">
+                {client.documents.uploaded + client.documents.approved}/{client.documents.total} uploaded
+              </p>
+              <DocChips docs={client.documents} />
+            </button>
+          ) : <span className="text-[11px] text-gray-300">—</span>}
+        </td>
+      )}
       <td className="px-4 py-3">
         <div className="flex flex-col items-start gap-1">
           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -175,6 +269,7 @@ function ClientRow({ client, onEdit, onDelete, onView }: any) {
             {client.isActive ? 'Active' : 'Inactive'}
           </span>
           <ClientStatusBadge status={client.status} />
+          <VerifiedBadge docs={client.documents} />
         </div>
       </td>
       <td className="px-4 py-3">
@@ -199,6 +294,8 @@ export default function ClientsPage() {
   const [industryId,   setIndustryId]   = useState('');
   const [activeFilter, setActiveFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [docsFilter,   setDocsFilter]   = useState('');
+  const isSuperAdmin = useAuth(s => s.user?.role) === 'SUPER_ADMIN';
   const [page,         setPage]         = useState(1);
   const [modal,        setModal]        = useState(false);
   const [editing,      setEditing]      = useState<any>(null);
@@ -217,13 +314,14 @@ export default function ClientsPage() {
   }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['clients', page, search, industryId, activeFilter, statusFilter],
+    queryKey: ['clients', page, search, industryId, activeFilter, statusFilter, docsFilter],
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), limit: '20' });
       if (search)       params.set('search', search);
       if (industryId)   params.set('industryId', industryId);
       if (activeFilter) params.set('isActive', activeFilter);
       if (statusFilter) params.set('status', statusFilter);
+      if (docsFilter)   params.set('docs', docsFilter);
       return api.get(`/clients?${params}`).then(r => r.data);
     },
     staleTime: 0,
@@ -234,6 +332,28 @@ export default function ClientsPage() {
   const active    = clients.filter((c: any) => c.isActive).length;
   const totalRev  = clients.reduce((s: number, c: any) => s + (c.totalRevenue || 0), 0);
   const openJobs  = clients.reduce((s: number, c: any) => s + (c.openJobs || 0), 0);
+  const docTotals = data?.documentTotals;
+
+  // Alert the Super Admin once per visit about documents companies still owe or that need review.
+  const alerted = useRef(false);
+  useEffect(() => {
+    if (!docTotals || alerted.current) return;
+    alerted.current = true;
+    const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+    if (docTotals.overdue > 0) {
+      toast.error(`${plural(docTotals.overdue, 'document')} overdue from ${plural(docTotals.clientsWithOverdue, 'client')}`,
+        { id: 'docs-overdue', duration: 6000 });
+    }
+    const notOverdue = docTotals.pending - docTotals.overdue;
+    if (notOverdue > 0) {
+      toast(`${plural(notOverdue, 'requested document')} not uploaded yet (${plural(docTotals.clientsWithPending, 'client')})`,
+        { id: 'docs-pending', icon: '📄', duration: 6000 });
+    }
+    if (docTotals.awaitingReview > 0) {
+      toast(`${plural(docTotals.awaitingReview, 'uploaded document')} waiting for your review`,
+        { id: 'docs-review', icon: '🔎', duration: 6000 });
+    }
+  }, [docTotals]);
 
   const save = useMutation({
     mutationFn: (d: any) => editing ? api.put(`/clients/${editing.id}`, d) : api.post('/clients', d),
@@ -311,6 +431,16 @@ export default function ClientsPage() {
           <option value="APPROVED">Approved</option>
           <option value="REJECTED">Rejected</option>
         </select>
+        {isSuperAdmin && (
+          <select value={docsFilter} onChange={e => { setDocsFilter(e.target.value); setPage(1); }}
+            className="text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-400/30">
+            <option value="">All Documents</option>
+            <option value="pending">Documents not uploaded</option>
+            <option value="overdue">Documents overdue</option>
+            <option value="review">Uploaded, needs review</option>
+            <option value="complete">All documents approved</option>
+          </select>
+        )}
         <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden ml-auto">
           <button onClick={() => setViewMode('grid')}
             className={`w-9 h-9 flex items-center justify-center transition-colors ${viewMode === 'grid' ? 'bg-primary-400 text-white' : 'text-gray-400 hover:bg-gray-50'}`}>
@@ -338,7 +468,7 @@ export default function ClientsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {clients.map((c: any) => (
             <ClientCard key={c.id} client={c}
-              onView={(id: string) => router.push(`/admin/crm/clients/${id}`)}
+              onView={(id: string, tab?: string) => router.push(`/admin/crm/clients/${id}${tab ? `?tab=${tab}` : ''}`)}
               onEdit={openEdit}
               onDelete={(id: string) => { if (confirm('Delete this client?')) del.mutate(id); }}
             />
@@ -350,7 +480,7 @@ export default function ClientsPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
-                  {['Company','Contact','Email','Phone','City','Jobs','Revenue','Status','Actions'].map(h => (
+                  {['Company','Contact','Email','Phone','City','Jobs','Revenue', ...(docTotals ? ['Documents'] : []),'Status','Actions'].map(h => (
                     <th key={h} className="text-left px-4 py-3 text-[11px] font-bold text-gray-400 uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
@@ -358,7 +488,8 @@ export default function ClientsPage() {
               <tbody>
                 {clients.map((c: any) => (
                   <ClientRow key={c.id} client={c}
-                    onView={(id: string) => router.push(`/admin/crm/clients/${id}`)}
+                    onView={(id: string, tab?: string) => router.push(`/admin/crm/clients/${id}${tab ? `?tab=${tab}` : ''}`)}
+                    showDocs={!!docTotals}
                     onEdit={openEdit}
                     onDelete={(id: string) => { if (confirm('Delete this client?')) del.mutate(id); }}
                   />

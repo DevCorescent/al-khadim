@@ -9,7 +9,7 @@ import { prisma } from '@/lib/prisma';
 import { requireStaff } from '../auth';
 import { body, handler, json, query } from '../http';
 import { pagination } from '../validate';
-import { getClient } from '../utils/aiClient';
+import { describeAiError, getClient } from '../utils/aiClient';
 import { getToolsForRole, executeTool } from '../ai/tools/_registry';
 import { getQuickActionsForTools } from '../ai/quickActions';
 
@@ -224,7 +224,8 @@ export const chat = handler(async (req) => {
       }
     } catch (err: any) {
       console.error('[aiAssistant] chat error:', err.message);
-      res.write('error', { error: 'AI assistant error' });
+      // Staff-only endpoint, so a specific reason (overloaded, out of credits…) is fine to show.
+      res.write('error', { error: err?.status ? describeAiError(err) : 'AI assistant error' });
       res.end();
     }
   }

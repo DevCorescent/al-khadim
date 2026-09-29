@@ -7,13 +7,15 @@ import { prisma } from '@/lib/prisma';
 import { requireCandidate } from '../auth';
 import { body, handler, json, query } from '../http';
 import { rateLimit } from '../rateLimit';
-import { absoluteUploadPath, parseUpload } from '../upload';
+import { parseUpload } from '../upload';
 import { fileResponse, wantsInline } from '../utils/fileResponse';
 import { extractCv } from '../utils/cvExtract';
 import { isValidYouTubeUrl } from '../utils/youtube';
 import { sendTemplatedMail } from '../utils/templateRenderer';
 import { normalizeEmail, redeemTicket } from '../utils/otp';
 import { pagination, pickFields } from '../validate';
+import { type ChangeSet, discardStagedFiles, notifyAdminsOfRequest } from '../utils/profileChanges';
+import { withLocalCopy } from '../storage';
 
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
 
@@ -51,7 +53,7 @@ export const parseCv = handler(async (req) => {
   const { file } = await parseUpload(req, ['cv']);
   if (!file) return json({ error: 'No CV file uploaded' }, 400);
   try {
-    const parsed = await extractCv(absoluteUploadPath(file.path));
+    const parsed = await withLocalCopy(file.path, extractCv);
     return json({ parsed, cvPath: file.path });
   } catch (err: any) {
     console.error('CV parse error:', err);
@@ -281,40 +283,75 @@ export const updateMe = handler(async (req) => {
       data.introVideoUrl = introVideoUrl || null;
     }
 
-    // Capture changes for edit history
+    // Diff every submitted column against the live profile; unchanged values are dropped.
     const before: any = candidate;
-    const changes: Record<string, { old: any; new: any }> = {};
-    const TRACKED = ['firstName','lastName','email','phone','headline','summary','nationality','currentLocation','experience','skills','languages','education','linkedIn','portfolio','isPublic','introVideoUrl'];
-    for (const field of TRACKED) {
-      const oldVal = before[field];
-      const newVal = data[field];
-      if (newVal !== undefined) {
-        const oldStr = JSON.stringify(oldVal);
-        const newStr = JSON.stringify(newVal);
-        if (oldStr !== newStr) changes[field] = { old: oldVal, new: newVal };
-      }
+    const changes: ChangeSet = {};
+    for (const [field, newVal] of Object.entries(data)) {
+      const oldVal = before[field] ?? null;
+      if (JSON.stringify(oldVal) !== JSON.stringify(newVal ?? null)) changes[field] = { old: oldVal, new: newVal };
     }
-    if (files?.cv)    changes.cvPath = { old: before.cvPath, new: data.cvPath };
-    if (files?.photo) changes.photo  = { old: before.photo,  new: data.photo };
 
-    const [updated] = await prisma.$transaction([
-      prisma.candidate.update({ where: { id: candidate.id }, data }),
-      ...(Object.keys(changes).length > 0 ? [
-        prisma.candidateEditHistory.create({
-          data: {
-            candidateId: candidate.id,
-            editedBy: 'candidate',
-            editorName: `${before.firstName} ${before.lastName}`,
-            changes,
-          },
-        }),
-      ] : []),
-    ]);
+    if (!Object.keys(changes).length) {
+      await discardStagedFiles(changes);
+      return json({ message: 'No changes to submit.' });
+    }
 
-    return json(updated);
+    // Nothing goes live yet: the edit waits for a Super Admin (profileChanges.controller).
+    const rawReason = Array.isArray(reqBody.reason) ? reqBody.reason[0] : reqBody.reason;
+    const reason = typeof rawReason === 'string' ? rawReason.trim() : '';
+    if (reason.length < 3) {
+      await discardStagedFiles(changes);
+      return json({ error: 'Please tell us why you are making this change.' }, 400);
+    }
+    if (reason.length > 1000) {
+      await discardStagedFiles(changes);
+      return json({ error: 'Reason must be 1000 characters or fewer.' }, 400);
+    }
+
+    const pending = await prisma.candidateProfileChange.findFirst({
+      where: { candidateId: candidate.id, status: 'PENDING' }, select: { id: true },
+    });
+    if (pending) {
+      await discardStagedFiles(changes);
+      return json({ error: 'You already have changes awaiting approval. Withdraw them first to submit new ones.' }, 409);
+    }
+
+    const request = await prisma.candidateProfileChange.create({
+      data: { candidateId: candidate.id, changes, reason },
+    });
+    notifyAdminsOfRequest(before, changes, reason)
+      .catch((e: any) => console.error('[candidateAuth] approval request email failed:', e.message));
+
+    return json({ message: 'Your changes have been sent for approval.', request }, 202);
   } catch (err: any) {
     return json({ error: err.message }, 400);
   }
+});
+
+/* ── My profile change requests (newest first) ── */
+export const myProfileChanges = handler(async (req) => {
+  const { candidate } = await requireCandidate(req);
+  const requests = await prisma.candidateProfileChange.findMany({
+    where: { candidateId: candidate.id },
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+    select: { id: true, changes: true, reason: true, status: true, reviewedAt: true, reviewNote: true, createdAt: true },
+  });
+  return json(requests);
+});
+
+/* ── Withdraw a pending request ── */
+export const withdrawProfileChange = handler<{ id: string }>(async (req, { params }) => {
+  const { candidate } = await requireCandidate(req);
+  const request = await prisma.candidateProfileChange.findFirst({ where: { id: params.id, candidateId: candidate.id } });
+  if (!request) return json({ error: 'Not found' }, 404);
+  // Conditional update so a withdraw racing an approval can't both win.
+  const { count } = await prisma.candidateProfileChange.updateMany({
+    where: { id: request.id, status: 'PENDING' }, data: { status: 'WITHDRAWN' },
+  });
+  if (!count) return json({ error: 'This request has already been reviewed.' }, 409);
+  await discardStagedFiles(request.changes as ChangeSet);
+  return json({ message: 'Request withdrawn.' });
 });
 
 /* ── Get edit history ── */

@@ -52,7 +52,7 @@ export default function CompanyTeamPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 max-w-3xl mx-auto">
+    <div className="p-4 sm:p-6 w-full">
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-xl font-bold text-gray-900">Team</h1>
         <button onClick={() => setOpen(v => !v)} className="flex items-center gap-1.5 bg-primary-400 text-white text-xs font-bold px-3 py-2 rounded-xl hover:bg-primary-500 transition-colors">

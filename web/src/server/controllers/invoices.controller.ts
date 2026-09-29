@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { requirePermission } from '../permissions';
 import { body, handler, HttpError, json, query } from '../http';
 import { pagination, toDate, toNumber } from '../validate';
+import { parseUpload } from '../upload';
+import { deleteUpload } from '../storage';
 
 /* ─── helpers ─────────────────────────────────────────────── */
 /** Interactive transactions do several round-trips; allow for a slow database. */
@@ -170,13 +172,16 @@ export const get = handler<{ id: string }>(async (req, { params }) => {
   return json(doc);
 });
 
+export const LOGO_PATH = /^uploads\/images\/[\w-]+\.(png|jpe?g|webp)$/i;
+const INVOICE_SETTINGS_KEY = 'invoiceSettings';
+
 /* ─── scalar fields helper ────────────────────────────────── */
 /** Optional text columns: '' / null clear them. */
 const NULLABLE_TEXT = [
   'subject', 'description', 'terms', 'notes',
   'fromName', 'fromAddress', 'fromEmail', 'fromPhone', 'fromTaxNo', 'fromRegNo',
-  'billingName', 'billingAddress', 'billingEmail', 'billingPhone',
-  'logoText', 'watermark', 'footerText',
+  'billingName', 'billingAddress', 'billingEmail', 'billingPhone', 'billingHsnSac',
+  'logoText', 'logoUrl', 'watermark', 'footerText',
   'paymentRef', 'bankName', 'bankAccount', 'bankIBAN', 'bankSwift', 'bankRoutingNo', 'bankSortCode',
 ];
 /** Text columns with a default: '' / null fall back to it. */
@@ -206,6 +211,11 @@ function scalarFields(rest: any, partial = false) {
     out.watermarkOpacity = n !== undefined ? Math.round(n) : 12;
   }
   checkEnum(out.status, STATUSES, 'status');
+  // Only a logo uploaded through /invoices/logo: the path is printed into the invoice HTML.
+  if (out.logoUrl && !LOGO_PATH.test(String(out.logoUrl))) throw new HttpError(400, 'Invalid logo image');
+  if (out.billingHsnSac && !/^\d{2,8}$/.test(String(out.billingHsnSac).trim())) {
+    throw new HttpError(400, 'HSN/SAC code must be 2-8 digits');
+  }
   return out;
 }
 
@@ -376,4 +386,52 @@ export const duplicate = handler<{ id: string }>(async (req, { params }) => {
   } catch (err: any) {
     return json({ error: err.message }, 400);
   }
+});
+
+/* ─── Logo image ──────────────────────────────────────────── */
+
+async function defaultLogo(): Promise<string | null> {
+  const row = await prisma.siteConfig.findUnique({ where: { key: INVOICE_SETTINGS_KEY } });
+  return ((row?.value as any)?.defaultLogoUrl as string) || null;
+}
+
+async function setDefaultLogo(defaultLogoUrl: string | null, userId: string) {
+  const row = await prisma.siteConfig.findUnique({ where: { key: INVOICE_SETTINGS_KEY } });
+  const value = { ...((row?.value as any) || {}), defaultLogoUrl };
+  await prisma.siteConfig.upsert({
+    where: { key: INVOICE_SETTINGS_KEY },
+    create: { key: INVOICE_SETTINGS_KEY, value, updatedBy: userId },
+    update: { value, updatedBy: userId },
+  });
+}
+
+/* GET /invoices/logo — the company's default invoice logo */
+export const getLogo = handler(async (req) => {
+  await requirePermission(req, 'invoices', 'view');
+  return json({ defaultLogoUrl: await defaultLogo() });
+});
+
+/* POST /invoices/logo  (multipart: logo, makeDefault?) — upload a logo image */
+export const uploadLogo = handler(async (req) => {
+  const user = await requirePermission(req, 'invoices', 'create', ['invoices', 'edit']);
+  const { file, body: fields } = await parseUpload(req, ['logo']);
+  if (!file) return json({ error: 'Choose an image to upload' }, 400);
+  if (!LOGO_PATH.test(file.path)) {
+    await deleteUpload(file.path);
+    return json({ error: 'The logo must be a PNG, JPG or WebP image' }, 400);
+  }
+  const makeDefault = [].concat(fields.makeDefault as any)[0] === 'true';
+  if (makeDefault) await setDefaultLogo(file.path, user.id);
+  return json({ logoUrl: file.path, defaultLogoUrl: makeDefault ? file.path : await defaultLogo() }, 201);
+});
+
+/* PUT /invoices/logo  { defaultLogoUrl: string | null } — set or clear the default */
+export const setLogo = handler(async (req) => {
+  const user = await requirePermission(req, 'invoices', 'create', ['invoices', 'edit']);
+  const { defaultLogoUrl } = (await body(req)) || {};
+  if (defaultLogoUrl !== null && (typeof defaultLogoUrl !== 'string' || !LOGO_PATH.test(defaultLogoUrl))) {
+    return json({ error: 'Invalid logo image' }, 400);
+  }
+  await setDefaultLogo(defaultLogoUrl, user.id);
+  return json({ defaultLogoUrl });
 });

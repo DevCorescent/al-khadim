@@ -1,0 +1,5 @@
+import * as profileChanges from '@/server/controllers/profileChanges.controller';
+
+export const dynamic = 'force-dynamic';
+
+export const POST = profileChanges.approve;

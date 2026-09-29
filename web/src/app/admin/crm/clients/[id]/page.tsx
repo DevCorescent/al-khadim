@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -20,6 +20,8 @@ import Link from 'next/link';
 import Modal from '@/components/admin/Modal';
 import ActivityTimeline from '@/components/admin/crm/ActivityTimeline';
 import ClientFormModal from '@/components/admin/crm/ClientFormModal';
+import ClientDocumentsPanel from '@/components/admin/crm/ClientDocumentsPanel';
+import { useAuth } from '@/lib/auth';
 
 const COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#3b82f6','#a855f7','#ec4899','#14b8a6'];
 
@@ -88,7 +90,11 @@ export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const qc = useQueryClient();
-  const [tab, setTab] = useState('Overview');
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState(searchParams.get('tab') || 'Overview');
+  const isSuperAdmin = useAuth(s => s.user?.role) === 'SUPER_ADMIN';
+  // Requesting documents from a company is a Super Admin feature.
+  const tabs = isSuperAdmin ? [...TABS, 'Documents'] : TABS;
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteName, setInviteName] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
@@ -267,6 +273,11 @@ export default function ClientDetailPage() {
                     <Globe size={11} /> {client.website}
                   </a>
                 )}
+                {client.hsnSac && (
+                  <span className="text-[10px] font-bold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                    HSN/SAC: {client.hsnSac}
+                  </span>
+                )}
                 {client.source && (
                   <span className="text-[10px] font-bold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">
                     Source: {client.source}
@@ -377,7 +388,7 @@ export default function ClientDetailPage() {
 
         {/* Tabs */}
         <div className="flex gap-0.5 mt-5 overflow-x-auto">
-          {TABS.map(t => (
+          {tabs.map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-2 text-sm font-semibold rounded-xl whitespace-nowrap transition-all ${
                 tab === t ? 'bg-primary-400 text-white shadow-sm' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
@@ -389,7 +400,7 @@ export default function ClientDetailPage() {
       </div>
 
       {/* Content */}
-      <div className="p-6 max-w-7xl mx-auto">
+      <div className="p-6 w-full">
 
         {/* ── OVERVIEW ── */}
         {tab === 'Overview' && (
@@ -860,6 +871,9 @@ export default function ClientDetailPage() {
             </div>
           </div>
         )}
+
+        {/* ── DOCUMENTS (Super Admin) ── */}
+        {tab === 'Documents' && isSuperAdmin && <ClientDocumentsPanel clientId={id} />}
 
         {/* ── PORTAL USERS ── */}
         {tab === 'Portal Users' && (

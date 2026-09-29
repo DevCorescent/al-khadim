@@ -19,7 +19,7 @@
  * CV_AI_PARSING=true is set explicitly — having an API key for the chat
  * assistant is deliberately not enough to turn it on.
  */
-import { getClient, providerBaseUrl } from './aiClient';
+import { getClient } from './aiClient';
 
 /** Models that support Structured Outputs (`response_format: json_schema`). */
 const JSON_SCHEMA_MODELS = ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4.1-mini'];
@@ -141,11 +141,11 @@ const SHAPE_PROMPT = [
   'Output JSON only — no prose, no markdown fences.',
 ].join('\n');
 
-function pickModel(configured: string): string {
+function pickModel(configured: string, baseUrl?: string): string {
   if (process.env.CV_AI_MODEL) return process.env.CV_AI_MODEL;
   // Against a compatible provider (Gemini, Groq, OpenRouter…) the model names
   // are theirs, so never substitute an OpenAI one.
-  if (providerBaseUrl()) return configured;
+  if (baseUrl) return configured;
   return JSON_SCHEMA_MODELS.includes(configured) ? configured : FALLBACK_MODEL;
 }
 
@@ -229,7 +229,7 @@ export async function parseCvWithLlm(text: string): Promise<LlmParsedCV | null> 
     return null;
   }
 
-  const model = pickModel(ai.model);
+  const model = pickModel(ai.model, ai.baseUrl);
   const body = text.length > MAX_CHARS ? text.slice(0, MAX_CHARS) : text;
 
   // CV_AI_TIMEOUT_MS is the budget for the whole attempt chain, not per call —

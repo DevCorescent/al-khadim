@@ -1,11 +1,12 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import MarkPaidModal from './MarkPaidModal';
-import { Plus, Trash2, ChevronDown, Save, Eye, ArrowLeft, Info, RefreshCw, Palette, CheckSquare } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, Save, Eye, ArrowLeft, Info, RefreshCw, Palette, CheckSquare, ImagePlus, Loader2, LayoutTemplate, BookmarkPlus } from 'lucide-react';
 
 /* ─── Currency data ──────────────────────────────────────────── */
 const CURRENCIES = [
@@ -104,7 +105,7 @@ interface FormState {
   issueDate: string; dueDate: string; validUntil: string;
   fromName: string; fromAddress: string; fromEmail: string; fromPhone: string;
   fromTaxNo: string; fromRegNo: string;
-  billingName: string; billingAddress: string; billingEmail: string; billingPhone: string;
+  billingName: string; billingAddress: string; billingEmail: string; billingPhone: string; billingHsnSac: string;
   discount: number; discountType: string; taxRate: number; taxLabel: string;
   paymentMethod: string; paymentRef: string;
   bankName: string; bankAccount: string; bankIBAN: string; bankSwift: string;
@@ -113,7 +114,7 @@ interface FormState {
   items: Item[];
   // Design
   template: string; primaryColor: string; accentColor: string; fontFamily: string;
-  logoText: string; logoShape: string; tableStyle: string;
+  logoText: string; logoUrl: string; logoShape: string; tableStyle: string;
   watermark: string; watermarkOpacity: number;
   showHeader: boolean; showFooter: boolean; showSignature: boolean; footerText: string;
 }
@@ -126,7 +127,7 @@ const BLANK: FormState = {
   issueDate: new Date().toISOString().split('T')[0],
   dueDate:'', validUntil:'',
   fromName:'', fromAddress:'', fromEmail:'', fromPhone:'', fromTaxNo:'', fromRegNo:'',
-  billingName:'', billingAddress:'', billingEmail:'', billingPhone:'',
+  billingName:'', billingAddress:'', billingEmail:'', billingPhone:'', billingHsnSac:'',
   discount:0, discountType:'FIXED', taxRate:0, taxLabel:'VAT',
   paymentMethod:'BANK_TRANSFER', paymentRef:'',
   bankName:'', bankAccount:'', bankIBAN:'', bankSwift:'', bankRoutingNo:'', bankSortCode:'',
@@ -135,7 +136,7 @@ const BLANK: FormState = {
   items:[{ description:'', qty:1, unit:'', unitPrice:0, total:0 }],
   // Design defaults
   template:'classic', primaryColor:'#6366f1', accentColor:'#ffffff', fontFamily:'helvetica',
-  logoText:'', logoShape:'rounded', tableStyle:'striped',
+  logoText:'', logoUrl:'', logoShape:'rounded', tableStyle:'striped',
   watermark:'', watermarkOpacity:12,
   showHeader:true, showFooter:true, showSignature:false, footerText:'',
 };
@@ -179,7 +180,33 @@ function loadDiscount(existing: any): number {
   return Math.round((stored / subtotal) * 100 * 10000) / 10000;
 }
 
-export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defaultClientId = '' }: { existing?: any; defaultType?: string; defaultClientId?: string }) {
+/** Form fields a saved template carries. Never client, dates, status or billing (those are per invoice). */
+const TEMPLATE_KEYS = [
+  'docType', 'currency', 'dateFormat', 'subject', 'description',
+  'fromName', 'fromAddress', 'fromEmail', 'fromPhone', 'fromTaxNo', 'fromRegNo',
+  'discount', 'discountType', 'taxRate', 'taxLabel', 'paymentMethod',
+  'bankName', 'bankAccount', 'bankIBAN', 'bankSwift', 'bankRoutingNo', 'bankSortCode',
+  'terms', 'notes',
+  'template', 'primaryColor', 'accentColor', 'fontFamily', 'logoText', 'logoUrl', 'logoShape', 'tableStyle',
+  'watermark', 'watermarkOpacity', 'showHeader', 'showFooter', 'showSignature', 'footerText',
+] as const;
+
+function applyTemplate(f: FormState, data: any, { keepDocType = false } = {}): FormState {
+  const next: any = { ...f };
+  for (const k of TEMPLATE_KEYS) {
+    if (keepDocType && k === 'docType') continue;
+    if (data[k] !== undefined && data[k] !== null) next[k] = data[k];
+  }
+  if (Array.isArray(data.items) && data.items.length) {
+    next.items = data.items.map((i: any) => ({
+      description: i.description, qty: i.qty || 1, unit: i.unit || '', unitPrice: i.unitPrice || 0,
+      total: (i.qty || 1) * (i.unitPrice || 0),
+    }));
+  }
+  return next;
+}
+
+export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defaultClientId = '', templateId = '' }: { existing?: any; defaultType?: string; defaultClientId?: string; templateId?: string }) {
   const router  = useRouter();
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'details'|'from'|'billing'|'payment'|'design'>('details');
@@ -206,6 +233,7 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
       billingAddress:existing.billingAddress|| [existing.client?.address, existing.client?.city, existing.client?.country].filter(Boolean).join(', ') || '',
       billingEmail:  existing.billingEmail  || existing.client?.email || '',
       billingPhone:  existing.billingPhone  || existing.client?.phone || '',
+      billingHsnSac: existing.billingHsnSac || existing.client?.hsnSac || '',
       discount:      loadDiscount(existing),
       discountType:  existing.discountType  || 'FIXED',
       taxRate:       existing.taxRate       ?? 0,
@@ -230,6 +258,7 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
       accentColor:     existing.accentColor     || '#ffffff',
       fontFamily:      existing.fontFamily      || 'helvetica',
       logoText:        existing.logoText        || '',
+      logoUrl:         existing.logoUrl         || '',
       logoShape:       existing.logoShape       || 'rounded',
       tableStyle:      existing.tableStyle      || 'striped',
       watermark:       existing.watermark       || '',
@@ -250,6 +279,93 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
   const setVal = (field: keyof FormState, value: any) =>
     setForm(f => ({ ...f, [field]: value }));
 
+  const qc = useQueryClient();
+  const { data: templates = [] } = useQuery({
+    queryKey: ['invoice-templates'],
+    queryFn: () => api.get('/invoice-templates').then(r => r.data as any[]),
+  });
+  const [templateName, setTemplateName] = useState('');
+  // New documents start from ?template=<id>, else the default template (once).
+  const templateApplied = useRef(false);
+  useEffect(() => {
+    if (existing || templateApplied.current || !templates.length) return;
+    const tpl = templates.find((t: any) => t.id === templateId) || templates.find((t: any) => t.isDefault);
+    templateApplied.current = true;
+    if (!tpl) return;
+    // An explicit ?type= wins over the template's document type.
+    setForm(f => applyTemplate(f, tpl.data, { keepDocType: !templateId }));
+    setTemplateName(tpl.name);
+  }, [existing, templates, templateId]);
+
+  function applySavedTemplate(id: string) {
+    const tpl = templates.find((t: any) => t.id === id);
+    if (!tpl) return;
+    if (existing && !confirm(`Apply "${tpl.name}"? It replaces sender, bank, terms and design on this ${DOC_LABELS[form.docType] || 'document'}${tpl.data.items?.length ? ', and its line items' : ''}.`)) return;
+    setForm(f => applyTemplate(f, tpl.data, { keepDocType: !!existing }));
+    setTemplateName(tpl.name);
+    toast.success(`Template "${tpl.name}" applied`);
+  }
+
+  const [tplModal, setTplModal] = useState(false);
+  const [tplForm, setTplForm] = useState({ name: '', description: '', includeItems: false, isDefault: false });
+  const [tplSaving, setTplSaving] = useState(false);
+  async function saveAsTemplate() {
+    setTplSaving(true);
+    try {
+      const data: any = {};
+      for (const k of TEMPLATE_KEYS) data[k] = (form as any)[k];
+      if (tplForm.includeItems) data.items = form.items.filter(i => i.description.trim());
+      await api.post('/invoice-templates', { name: tplForm.name, description: tplForm.description, isDefault: tplForm.isDefault, data });
+      qc.invalidateQueries({ queryKey: ['invoice-templates'] });
+      toast.success(`Saved as template "${tplForm.name.trim()}"`);
+      setTemplateName(tplForm.name.trim());
+      setTplModal(false);
+      setTplForm({ name: '', description: '', includeItems: false, isDefault: false });
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || 'Could not save the template');
+    } finally {
+      setTplSaving(false);
+    }
+  }
+
+  // The company's default invoice logo, pre-filled on new invoices.
+  const { data: logoSettings, refetch: refetchLogo } = useQuery({
+    queryKey: ['invoice-logo'],
+    queryFn: () => api.get('/invoices/logo').then(r => r.data as { defaultLogoUrl: string | null }),
+  });
+  useEffect(() => {
+    if (!existing && logoSettings?.defaultLogoUrl) {
+      setForm(f => (f.logoUrl ? f : { ...f, logoUrl: logoSettings.defaultLogoUrl! }));
+    }
+  }, [existing, logoSettings?.defaultLogoUrl]);
+
+  const [logoUploading, setLogoUploading] = useState(false);
+  async function uploadLogo(file: File, makeDefault: boolean) {
+    setLogoUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('logo', file);
+      fd.append('makeDefault', String(makeDefault));
+      const { data } = await api.post('/invoices/logo', fd);
+      setForm(f => ({ ...f, logoUrl: data.logoUrl }));
+      if (makeDefault) refetchLogo();
+      toast.success(makeDefault ? 'Logo uploaded and saved as the default for new invoices' : 'Logo uploaded');
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || 'Logo upload failed');
+    } finally {
+      setLogoUploading(false);
+    }
+  }
+  async function setAsDefault(logoUrl: string | null) {
+    try {
+      await api.put('/invoices/logo', { defaultLogoUrl: logoUrl });
+      refetchLogo();
+      toast.success(logoUrl ? 'Saved as the default logo for new invoices' : 'Default logo removed');
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || 'Could not update the default logo');
+    }
+  }
+
   const { data: clients = [] } = useQuery({
     queryKey: ['clients-list'],
     queryFn: () => api.get('/clients?limit=200').then(r => r.data.data || []),
@@ -264,6 +380,7 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
       billingName:    f.billingName    || c.companyName || '',
       billingEmail:   f.billingEmail   || c.email || '',
       billingPhone:   f.billingPhone   || c.phone || '',
+      billingHsnSac:  f.billingHsnSac  || c.hsnSac || '',
       billingAddress: f.billingAddress || [c.address, c.city, c.country].filter(Boolean).join(', ') || '',
     }));
   }, [form.clientId, clients]);
@@ -347,6 +464,20 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <div className="relative flex items-center">
+            <LayoutTemplate size={13} className="absolute left-3 text-gray-400 pointer-events-none" />
+            <select value="" onChange={e => { if (e.target.value) applySavedTemplate(e.target.value); }}
+              title={templateName ? `Started from "${templateName}"` : 'Start from a saved template'}
+              className="text-sm border border-gray-200 rounded-xl pl-8 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-400/30 bg-white max-w-[200px]">
+              <option value="">{templateName ? `Template: ${templateName}` : templates.length ? 'Use template…' : 'No templates yet'}</option>
+              {templates.map((t: any) => <option key={t.id} value={t.id}>{t.name}{t.isDefault ? ' (default)' : ''}</option>)}
+            </select>
+          </div>
+          <button onClick={() => { setTplForm(f => ({ ...f, name: f.name || templateName })); setTplModal(true); }}
+            title="Save these settings as a reusable template"
+            className="flex items-center gap-1.5 border border-gray-200 bg-white text-gray-700 font-semibold text-sm px-3 py-2 rounded-xl hover:bg-gray-50 transition-colors">
+            <BookmarkPlus size={14}/> Save as template
+          </button>
           <select value={form.status} onChange={set('status')}
             className="text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-400/30 bg-white">
             {(form.docType==='QUOTATION'
@@ -365,7 +496,44 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-6 grid grid-cols-1 xl:grid-cols-5 gap-6">
+      {tplModal && createPortal(
+        <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => !tplSaving && setTplModal(false)}>
+          <form onClick={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); saveAsTemplate(); }}
+            className="bg-white rounded-2xl w-full max-w-md p-5 space-y-3">
+            <h3 className="text-base font-bold text-gray-900">Save as template</h3>
+            <p className="text-xs text-gray-500">Saves sender and bank details, terms, notes, tax, currency and design. The client, dates and invoice number are never saved; every new invoice gets its own number.</p>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Template name *</label>
+              <input required autoFocus value={tplForm.name} maxLength={100} onChange={e => setTplForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="e.g. Standard Recruitment Invoice" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Description</label>
+              <input value={tplForm.description} maxLength={500} onChange={e => setTplForm(f => ({ ...f, description: e.target.value }))}
+                placeholder="Optional" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30" />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input type="checkbox" checked={tplForm.includeItems} onChange={e => setTplForm(f => ({ ...f, includeItems: e.target.checked }))} className="accent-primary-500" />
+              Include line items ({form.items.filter(i => i.description.trim()).length})
+            </label>
+            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input type="checkbox" checked={tplForm.isDefault} onChange={e => setTplForm(f => ({ ...f, isDefault: e.target.checked }))} className="accent-primary-500" />
+              Use automatically for new documents
+            </label>
+            <div className="flex gap-2 pt-1">
+              <button type="button" onClick={() => setTplModal(false)} disabled={tplSaving}
+                className="flex-1 border border-gray-200 text-gray-600 font-semibold text-sm py-2.5 rounded-xl hover:bg-gray-50">Cancel</button>
+              <button type="submit" disabled={tplSaving || !tplForm.name.trim()}
+                className="flex-1 bg-primary-400 hover:bg-primary-500 text-white font-bold text-sm py-2.5 rounded-xl disabled:opacity-60">
+                {tplSaving ? 'Saving…' : 'Save template'}
+              </button>
+            </div>
+          </form>
+        </div>,
+        document.body,
+      )}
+
+      <div className="w-full p-6 grid grid-cols-1 xl:grid-cols-5 gap-6">
         {/* ── Left: form ── */}
         <div className="xl:col-span-3 space-y-5">
           {/* Section tabs */}
@@ -592,6 +760,7 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
                       billingName:    c.companyName||'',
                       billingEmail:   c.email||'',
                       billingPhone:   c.phone||'',
+                      billingHsnSac:  c.hsnSac||'',
                       billingAddress: [c.address,c.city,c.country].filter(Boolean).join(', ')||'',
                     }));
                     toast.success('Re-filled from client');
@@ -617,6 +786,12 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
                 <div>
                   <label className="block text-xs font-bold text-gray-500 mb-1">Phone</label>
                   <input value={form.billingPhone} onChange={set('billingPhone')} placeholder="+44 20 0000 0000"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30"/>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">HSN/SAC Code</label>
+                  <input value={form.billingHsnSac} inputMode="numeric" placeholder="e.g. 998519"
+                    onChange={e => { const v = e.target.value.replace(/\D/g, '').slice(0, 8); setForm(f => ({ ...f, billingHsnSac: v })); }}
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30"/>
                 </div>
                 <div className="sm:col-span-2">
@@ -785,6 +960,34 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
                       className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30">
                       {TABLE_STYLES.map(s=><option key={s.value} value={s.value}>{s.label}</option>)}
                     </select>
+                  </div>
+                  <div className="sm:col-span-2 rounded-xl border border-gray-200 p-3">
+                    <label className="block text-xs font-bold text-gray-500 mb-2">Logo Image</label>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="w-28 h-14 rounded-lg border border-dashed border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden">
+                        {form.logoUrl
+                          ? <img src={`/${form.logoUrl}`} alt="Logo" className="max-h-12 max-w-[104px] object-contain" />
+                          : <span className="text-[10px] text-gray-400">No logo</span>}
+                      </div>
+                      <label className={`flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl cursor-pointer ${logoUploading ? 'opacity-60 pointer-events-none' : ''} bg-primary-400 text-white hover:bg-primary-500`}>
+                        {logoUploading ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}
+                        {form.logoUrl ? 'Change' : 'Upload logo'}
+                        <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+                          onChange={e => { const f = e.target.files?.[0]; if (f) uploadLogo(f, !logoSettings?.defaultLogoUrl); e.target.value = ''; }} />
+                      </label>
+                      {form.logoUrl && (
+                        <button type="button" onClick={() => setVal('logoUrl', '')}
+                          className="text-xs font-semibold text-gray-500 hover:text-red-500">Remove from this invoice</button>
+                      )}
+                      {form.logoUrl && form.logoUrl !== logoSettings?.defaultLogoUrl && (
+                        <button type="button" onClick={() => setAsDefault(form.logoUrl)}
+                          className="text-xs font-semibold text-primary-500 hover:underline">Use for all new invoices</button>
+                      )}
+                      {form.logoUrl && form.logoUrl === logoSettings?.defaultLogoUrl && (
+                        <span className="text-[11px] font-semibold text-emerald-600">Default for new invoices</span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-gray-400 mt-2">PNG, JPG or WebP. A transparent PNG looks best. With a logo image, the initials below are not shown.</p>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-gray-500 mb-1">Logo Initials / Text</label>
@@ -963,6 +1166,7 @@ function LivePreview({ form, subtotal, discAmt, taxAmt, total }: any) {
 
   const logoRadius = form.logoShape==='circle'?'9999px':form.logoShape==='square'?'4px':'10px';
   const logoChar   = (form.logoText || senderName[0] || '?').toUpperCase().slice(0,2);
+  const logoImg    = form.logoUrl ? <img src={`/${form.logoUrl}`} alt="" style={{display:'block',maxHeight:32,maxWidth:112,objectFit:'contain'}} /> : null;
 
   const tableItems = form.items.filter((i:any)=>i.description);
 
@@ -1002,6 +1206,7 @@ function LivePreview({ form, subtotal, discAmt, taxAmt, total }: any) {
       <p className="font-bold text-gray-800">{form.billingName||'—'}</p>
       {form.billingEmail   && <p className="text-gray-400 text-[9px]">{form.billingEmail}</p>}
       {form.billingAddress && <p className="text-gray-400 text-[8px] leading-relaxed">{form.billingAddress}</p>}
+      {form.billingHsnSac  && <p className="text-gray-400 text-[8px]">HSN/SAC: {form.billingHsnSac}</p>}
     </>;
   }
 
@@ -1027,9 +1232,9 @@ function LivePreview({ form, subtotal, discAmt, taxAmt, total }: any) {
         <div style={{borderBottom:`3px solid ${pc}`,padding:'16px 20px 12px'}}>
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div style={{width:36,height:36,background:pc,borderRadius:logoRadius,display:'flex',alignItems:'center',justifyContent:'center',color:onPc,fontWeight:900,fontSize:14,marginBottom:6}}>
+              {logoImg ? <div style={{marginBottom:6}}>{logoImg}</div> : <div style={{width:36,height:36,background:pc,borderRadius:logoRadius,display:'flex',alignItems:'center',justifyContent:'center',color:onPc,fontWeight:900,fontSize:14,marginBottom:6}}>
                 {logoChar}
-              </div>
+              </div>}
               <p className="font-bold text-gray-800">{senderName}</p>
               {form.fromAddress && <p className="text-gray-400 text-[9px]">{form.fromAddress}</p>}
               {form.fromEmail   && <p className="text-gray-400 text-[9px]">{form.fromEmail}</p>}
@@ -1075,9 +1280,9 @@ function LivePreview({ form, subtotal, discAmt, taxAmt, total }: any) {
         <div style={{background:`linear-gradient(135deg,${pc} 0%,${pc}99 100%)`,padding:'16px 20px'}}>
           <div className="flex items-start justify-between">
             <div>
-              <div style={{width:36,height:36,background:'rgba(255,255,255,0.2)',borderRadius:logoRadius,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:900,fontSize:14,border:'1.5px solid rgba(255,255,255,0.3)',marginBottom:6}}>
+              {logoImg ? <div style={{display:'inline-block',background:'#fff',borderRadius:6,padding:'3px 6px',marginBottom:6}}>{logoImg}</div> : <div style={{width:36,height:36,background:'rgba(255,255,255,0.2)',borderRadius:logoRadius,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:900,fontSize:14,border:'1.5px solid rgba(255,255,255,0.3)',marginBottom:6}}>
                 {logoChar}
-              </div>
+              </div>}
               <p className="font-bold text-white">{senderName}</p>
               {form.fromAddress && <p style={{color:'rgba(255,255,255,0.7)',fontSize:9}}>{form.fromAddress}</p>}
             </div>
@@ -1122,6 +1327,7 @@ function LivePreview({ form, subtotal, discAmt, taxAmt, total }: any) {
           <>
             <div className="flex items-start justify-between mb-2">
               <div>
+                {logoImg && <div style={{marginBottom:6}}>{logoImg}</div>}
                 <p style={{fontSize:14,fontWeight:900,color:'#111'}}>{senderName}</p>
                 {form.fromAddress && <p style={{color:'#888',fontSize:9}}>{form.fromAddress}</p>}
               </div>
@@ -1162,9 +1368,9 @@ function LivePreview({ form, subtotal, discAmt, taxAmt, total }: any) {
         <div style={{background:pc,padding:'12px 20px'}}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div style={{width:32,height:32,background:'rgba(255,255,255,0.18)',borderRadius:logoRadius,display:'flex',alignItems:'center',justifyContent:'center',color:onPc,fontWeight:900,fontSize:13,border:'1.5px solid rgba(255,255,255,0.3)'}}>
+              {logoImg ? <div style={{background:'#fff',borderRadius:6,padding:'3px 6px'}}>{logoImg}</div> : <div style={{width:32,height:32,background:'rgba(255,255,255,0.18)',borderRadius:logoRadius,display:'flex',alignItems:'center',justifyContent:'center',color:onPc,fontWeight:900,fontSize:13,border:'1.5px solid rgba(255,255,255,0.3)'}}>
                 {logoChar}
-              </div>
+              </div>}
               <div>
                 <p style={{fontWeight:800,color:onPc,fontSize:11}}>{senderName}</p>
                 {form.fromAddress && <p style={{color:isDark(pc)?'rgba(255,255,255,0.65)':'rgba(0,0,0,0.5)',fontSize:8}}>{form.fromAddress}</p>}

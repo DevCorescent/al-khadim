@@ -5,7 +5,7 @@ import api from '@/lib/api';
 import DataTable from '@/components/admin/DataTable';
 import Modal from '@/components/admin/Modal';
 import toast from 'react-hot-toast';
-import { Pencil, Trash2, Building2, DollarSign, Globe, Save } from 'lucide-react';
+import { Pencil, Trash2, Building2, DollarSign, Globe, Save, Lock } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import type { GeneralSettings } from '@/lib/useSettings';
 
@@ -176,6 +176,8 @@ export default function SettingsPage() {
         </div>
         <button onClick={() => setPwModal(true)} className="btn-outline text-sm py-2 px-4">Change Password</button>
       </div>
+
+      {user?.role === 'SUPER_ADMIN' && <RecruitmentRules />}
 
       {/* ── General Settings ── */}
       <form onSubmit={submitGeneral} className="bg-white rounded-xl border border-gray-100 p-6 space-y-6">
@@ -405,6 +407,48 @@ export default function SettingsPage() {
           </div>
         </form>
       </Modal>
+    </div>
+  );
+}
+
+/** Super-Admin-only recruitment rules (SiteConfig "recruitment"). */
+function RecruitmentRules() {
+  const qc = useQueryClient();
+  const { data } = useQuery<{ lockShortlisted: boolean }>({
+    queryKey: ['recruitment-settings'],
+    queryFn: () => api.get('/recruitment-settings').then(r => r.data),
+  });
+  const save = useMutation({
+    mutationFn: (lockShortlisted: boolean) => api.put('/recruitment-settings', { lockShortlisted }),
+    onSuccess: (r) => {
+      qc.setQueryData(['recruitment-settings'], r.data);
+      toast.success(r.data.lockShortlisted ? 'Shortlist lock turned on' : 'Shortlist lock turned off');
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to save'),
+  });
+  const on = !!data?.lockShortlisted;
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-2">
+          <div className="w-8 h-8 bg-primary-50 rounded-lg flex items-center justify-center shrink-0">
+            <Lock size={16} className="text-primary-500" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-900">Lock shortlisted candidates</h3>
+            <p className="text-xs text-gray-400 mt-0.5 max-w-xl">
+              When on, once a company shortlists a candidate in their dashboard, they can no longer move that candidate
+              back to &quot;Request Interview&quot;. Only the Super Admin can change this.
+            </p>
+          </div>
+        </div>
+        <button type="button" role="switch" aria-checked={on} disabled={!data || save.isPending}
+          onClick={() => save.mutate(!on)}
+          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${on ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+          <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${on ? 'translate-x-5' : 'translate-x-0.5'}`} />
+        </button>
+      </div>
     </div>
   );
 }

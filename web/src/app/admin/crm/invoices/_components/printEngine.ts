@@ -7,7 +7,7 @@ export interface PrintInvoice {
   subject?: string; description?: string;
   fromName?: string; fromAddress?: string; fromEmail?: string; fromPhone?: string;
   fromTaxNo?: string; fromRegNo?: string;
-  billingName?: string; billingAddress?: string; billingEmail?: string; billingPhone?: string;
+  billingName?: string; billingAddress?: string; billingEmail?: string; billingPhone?: string; billingHsnSac?: string;
   subtotal: number; discount: number; discountType: string; taxRate: number;
   tax: number; totalAmount: number; taxLabel?: string;
   paymentMethod?: string; paymentRef?: string;
@@ -17,7 +17,7 @@ export interface PrintInvoice {
   items: { description: string; qty: number; unit?: string; unitPrice: number; total: number }[];
   // Design
   template?: string; primaryColor?: string; accentColor?: string; fontFamily?: string;
-  logoText?: string; logoShape?: string; tableStyle?: string;
+  logoText?: string; logoUrl?: string | null; logoShape?: string; tableStyle?: string;
   watermark?: string; watermarkOpacity?: number;
   showHeader?: boolean; showFooter?: boolean; showSignature?: boolean; footerText?: string;
   dateFormat?: string;
@@ -66,6 +66,14 @@ function fmtDate(iso: string, fmt = 'DD/MM/YYYY'): string {
   return fmt.replace('DD',dd).replace('MMM',mon).replace('MM',mm).replace('YYYY',yyyy);
 }
 
+/** Uploaded logo image, sized to sit where the initials box would; '' when there is none. */
+function logoImage(inv: PrintInvoice, height: number): string {
+  if (!inv.logoUrl) return '';
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const src = `${origin}/${String(inv.logoUrl).replace(/^\/+/, '').replace(/"/g, '')}`;
+  return `<img src="${src}" alt="" style="display:block;max-height:${height}px;max-width:${height * 3.5}px;object-fit:contain" />`;
+}
+
 function logoRadius(shape = 'rounded'): string {
   return shape === 'circle' ? '50%' : shape === 'square' ? '4px' : '10px';
 }
@@ -94,9 +102,9 @@ function templateClassic(inv: PrintInvoice, pc: string, ac: string, font: string
     <table width="100%" style="border-collapse:collapse">
       <tr>
         <td>
-          <div style="width:52px;height:52px;background:${pc};border-radius:${logoRadius(inv.logoShape)};display:flex;align-items:center;justify-content:center;color:${onPc};font-size:22px;font-weight:900;text-align:center;line-height:52px">
+          ${logoImage(inv, 56) || `<div style="width:52px;height:52px;background:${pc};border-radius:${logoRadius(inv.logoShape)};display:flex;align-items:center;justify-content:center;color:${onPc};font-size:22px;font-weight:900;text-align:center;line-height:52px">
             ${(inv.logoText||senderName[0]||'?').toUpperCase()}
-          </div>
+          </div>`}
           <div style="margin-top:10px">
             <div style="font-size:18px;font-weight:800;color:#111">${senderName}</div>
             ${inv.fromAddress?`<div style="color:#666;font-size:11px;margin-top:3px;white-space:pre-line">${inv.fromAddress}</div>`:''}
@@ -128,6 +136,7 @@ function templateClassic(inv: PrintInvoice, pc: string, ac: string, font: string
           ${inv.billingEmail   ?`<div style="color:#555;font-size:12px;margin-top:2px">${inv.billingEmail}</div>`:''}
           ${inv.billingPhone   ?`<div style="color:#555;font-size:12px">${inv.billingPhone}</div>`:''}
           ${inv.billingAddress ?`<div style="color:#777;font-size:12px;margin-top:4px;white-space:pre-line">${inv.billingAddress}</div>`:''}
+          ${inv.billingHsnSac  ?`<div style="color:#777;font-size:12px;margin-top:2px">HSN/SAC: ${inv.billingHsnSac}</div>`:''}
         </td>
         <td style="vertical-align:top;text-align:right">
           ${inv.subject?`<div style="font-size:13px;font-weight:700;color:#222">${inv.subject}</div>`:''}
@@ -186,9 +195,9 @@ function templateModern(inv: PrintInvoice, pc: string, ac: string, font: string)
     <table width="100%" style="border-collapse:collapse">
       <tr>
         <td style="vertical-align:top">
-          <div style="display:inline-block;width:56px;height:56px;background:rgba(255,255,255,0.18);border-radius:${logoRadius(inv.logoShape)};text-align:center;line-height:56px;font-size:24px;font-weight:900;color:#fff;border:2px solid rgba(255,255,255,0.3)">
+          ${inv.logoUrl ? `<div style="display:inline-block;background:#fff;border-radius:10px;padding:6px 10px">${logoImage(inv, 48)}</div>` : `<div style="display:inline-block;width:56px;height:56px;background:rgba(255,255,255,0.18);border-radius:${logoRadius(inv.logoShape)};text-align:center;line-height:56px;font-size:24px;font-weight:900;color:#fff;border:2px solid rgba(255,255,255,0.3)">
             ${(inv.logoText||senderName[0]||'?').toUpperCase()}
-          </div>
+          </div>`}
           <div style="margin-top:12px;color:rgba(255,255,255,0.95)">
             <div style="font-size:20px;font-weight:800">${senderName}</div>
             ${inv.fromAddress?`<div style="font-size:11px;opacity:0.8;margin-top:3px;white-space:pre-line">${inv.fromAddress}</div>`:''}
@@ -217,6 +226,7 @@ function templateModern(inv: PrintInvoice, pc: string, ac: string, font: string)
       ${inv.billingEmail   ?`<div style="color:#555;font-size:11px;margin-top:2px">${inv.billingEmail}</div>`:''}
       ${inv.billingPhone   ?`<div style="color:#555;font-size:11px">${inv.billingPhone}</div>`:''}
       ${inv.billingAddress ?`<div style="color:#777;font-size:11px;margin-top:4px;white-space:pre-line">${inv.billingAddress}</div>`:''}
+      ${inv.billingHsnSac  ?`<div style="color:#777;font-size:11px;margin-top:2px">HSN/SAC: ${inv.billingHsnSac}</div>`:''}
     </div>
     <div style="flex:0 0 auto;background:#f9f9fc;border-radius:10px;padding:16px;min-width:180px">
       <table style="border-collapse:collapse">
@@ -273,6 +283,7 @@ function templateMinimal(inv: PrintInvoice, pc: string, ac: string, font: string
     <table width="100%" style="border-collapse:collapse">
       <tr>
         <td style="vertical-align:top">
+          ${inv.logoUrl ? `<div style="margin-bottom:12px">${logoImage(inv, 48)}</div>` : ''}
           <div style="font-size:22px;font-weight:900;color:#111;letter-spacing:-0.5px">${senderName}</div>
           ${inv.fromAddress?`<div style="color:#888;font-size:12px;margin-top:4px;white-space:pre-line">${inv.fromAddress}</div>`:''}
           ${inv.fromEmail  ?`<div style="color:#888;font-size:12px">${inv.fromEmail}</div>`:''}
@@ -300,6 +311,7 @@ function templateMinimal(inv: PrintInvoice, pc: string, ac: string, font: string
           ${inv.billingEmail   ?`<div style="color:#666;font-size:12px;margin-top:2px">${inv.billingEmail}</div>`:''}
           ${inv.billingPhone   ?`<div style="color:#666;font-size:12px">${inv.billingPhone}</div>`:''}
           ${inv.billingAddress ?`<div style="color:#888;font-size:12px;margin-top:4px;white-space:pre-line">${inv.billingAddress}</div>`:''}
+          ${inv.billingHsnSac  ?`<div style="color:#888;font-size:12px;margin-top:2px">HSN/SAC: ${inv.billingHsnSac}</div>`:''}
         </td>
         ${inv.subject?`<td style="vertical-align:top;text-align:right"><div style="font-size:13px;font-weight:600;color:#333">${inv.subject}</div></td>`:''}
       </tr>
@@ -354,9 +366,9 @@ function templateCorporate(inv: PrintInvoice, pc: string, ac: string, font: stri
       <tr>
         <td style="padding:32px 40px;vertical-align:middle">
           <div style="display:inline-flex;align-items:center;gap:14px">
-            <div style="width:50px;height:50px;background:rgba(255,255,255,0.2);border-radius:${logoRadius(inv.logoShape)};text-align:center;line-height:50px;font-size:20px;font-weight:900;color:${onPc};border:2px solid rgba(255,255,255,0.35)">
+            ${inv.logoUrl ? `<div style="background:#fff;border-radius:10px;padding:6px 10px">${logoImage(inv, 44)}</div>` : `<div style="width:50px;height:50px;background:rgba(255,255,255,0.2);border-radius:${logoRadius(inv.logoShape)};text-align:center;line-height:50px;font-size:20px;font-weight:900;color:${onPc};border:2px solid rgba(255,255,255,0.35)">
               ${(inv.logoText||senderName[0]||'?').toUpperCase()}
-            </div>
+            </div>`}
             <div>
               <div style="font-size:17px;font-weight:800;color:${onPc}">${senderName}</div>
               ${inv.fromAddress?`<div style="font-size:10px;color:rgba(${hex2rgb(onPc)},0.7);white-space:pre-line">${inv.fromAddress}</div>`:''}
@@ -380,6 +392,7 @@ function templateCorporate(inv: PrintInvoice, pc: string, ac: string, font: stri
           ${inv.billingEmail   ?`<div style="color:#555;font-size:11px;margin-top:2px">${inv.billingEmail}</div>`:''}
           ${inv.billingPhone   ?`<div style="color:#555;font-size:11px">${inv.billingPhone}</div>`:''}
           ${inv.billingAddress ?`<div style="color:#777;font-size:11px;margin-top:4px;white-space:pre-line">${inv.billingAddress}</div>`:''}
+          ${inv.billingHsnSac  ?`<div style="color:#777;font-size:11px;margin-top:2px">HSN/SAC: ${inv.billingHsnSac}</div>`:''}
         </td>
         <td style="padding:20px 0 20px 24px;vertical-align:top">
           <table style="border-collapse:collapse">

@@ -7,8 +7,7 @@ import toast from 'react-hot-toast';
 import {
   Plus, Search, FileText, DollarSign, TrendingUp, Clock,
   CheckCircle2, AlertCircle, Eye, Copy, Trash2, ChevronDown,
-  BarChart2, ArrowUpRight,
-} from 'lucide-react';
+  BarChart2, ArrowUpRight, LayoutTemplate } from 'lucide-react';
 import {
   ComposedChart, Bar, Line, PieChart, Pie, Cell,
   BarChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -157,6 +156,10 @@ export default function InvoicesPage() {
           <button onClick={() => setShowStats(s=>!s)}
             className={`flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-xl border transition-colors ${showStats?'bg-primary-50 text-primary-600 border-primary-200':'bg-white text-gray-500 border-gray-200'}`}>
             <BarChart2 size={14}/> Reports
+          </button>
+          <button onClick={() => router.push('/admin/crm/invoices/templates')}
+            className="flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-xl border bg-white text-gray-500 border-gray-200 hover:bg-gray-50 transition-colors">
+            <LayoutTemplate size={14}/> Templates
           </button>
           <ExportMenu columns={EXPORT_COLUMNS} data={docs} filename="invoices" title="Invoices" disabled={isLoading} />
           {/* New doc dropdown */}

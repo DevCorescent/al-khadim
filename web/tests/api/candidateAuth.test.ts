@@ -1,6 +1,6 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { adminAuth, api, expectStatus, fetchRaw, samplePdf, samplePng, testEmail } from './_client';
+import { adminAuth, api, expectStatus, fetchRaw, samplePdf, samplePng, staffWithRole, testEmail } from './_client';
 import { cleanupTagged, db, otpTicket } from './_authDb';
 
 describe('candidate portal flow (candidate-auth)', () => {
@@ -145,24 +145,80 @@ describe('candidate portal flow (candidate-auth)', () => {
     cvId = res.data.cvId;
   });
 
-  test('PUT /candidate-auth/me updates profile fields and ignores everything else', async () => {
-    const fd = new FormData();
-    for (const [k, v] of Object.entries({
-      headline: 'Senior QA', experience: '5', currentSalary: '1000', expectedSalary: '2000', visaStatus: 'Employment',
-      portfolio: 'https://example.test', currency: 'USD',
-      // not editable by the candidate
-      email: testEmail('hijack'), status: 'PLACED', isPublic: 'true', cvId: 'HACKED', notes: 'hacked',
-      source: 'x', categoryId: 'x', industryId: 'x',
-    })) fd.append(k, v);
-    fd.append('skills', 'Excel');
-    fd.append('skills', 'Testing');
-    fd.append('photo', samplePng(), 'new.png');
-    const res = await api('PUT', '/candidate-auth/me', fd, { token: access });
-    expectStatus(res, 200);
+  test('PUT /candidate-auth/me stages changes for approval and ignores non-editable fields', async () => {
+    const form = (reason?: string) => {
+      const fd = new FormData();
+      for (const [k, v] of Object.entries({
+        headline: 'Senior QA', experience: '5', currentSalary: '1000', expectedSalary: '2000', visaStatus: 'Employment',
+        portfolio: 'https://example.test', currency: 'USD',
+        // not editable by the candidate
+        email: testEmail('hijack'), status: 'PLACED', isPublic: 'true', cvId: 'HACKED', notes: 'hacked',
+        source: 'x', categoryId: 'x', industryId: 'x',
+      })) fd.append(k, v);
+      fd.append('skills', 'Excel');
+      fd.append('skills', 'Testing');
+      fd.append('photo', samplePng(), 'new.png');
+      if (reason !== undefined) fd.append('reason', reason);
+      return fd;
+    };
+
+    const noReason = await api('PUT', '/candidate-auth/me', form(), { token: access });
+    expectStatus(noReason, 400);
+    assert.match(noReason.data.error, /why/i);
+
+    const res = await api('PUT', '/candidate-auth/me', form('Promoted and changed visa'), { token: access });
+    expectStatus(res, 202);
+    const changes = res.data.request.changes;
+    assert.equal(res.data.request.status, 'PENDING');
+    assert.deepEqual(changes.headline, { old: 'QA Engineer', new: 'Senior QA' });
+    assert.equal(changes.visaStatus.new, 'Employment');
+    assert.match(changes.photo.new, /^uploads\/images\//);
+    for (const f of ['email', 'status', 'isPublic', 'cvId', 'notes', 'categoryId']) assert.equal(changes[f], undefined, f);
+
+    // Nothing is live until approved.
+    const me = await api('GET', '/candidate-auth/me', undefined, { token: access });
+    assert.equal(me.data.headline, 'QA Engineer');
+
+    // One pending request at a time.
+    expectStatus(await api('PUT', '/candidate-auth/me', form('Again'), { token: access }), 409);
+
+    const mine = await api('GET', '/candidate-auth/me/profile-changes', undefined, { token: access });
+    expectStatus(mine, 200);
+    assert.equal(mine.data[0].status, 'PENDING');
+    assert.equal(mine.data[0].reason, 'Promoted and changed visa');
+  });
+
+  test('profile changes: only a SUPER_ADMIN reviews; approve applies the change once', async () => {
+    const recruiter = await staffWithRole('ADMIN');
+    try {
+      expectStatus(await api('GET', '/profile-changes', undefined, { token: recruiter.token }), 403);
+    } finally {
+      await recruiter.cleanup();
+    }
+    expectStatus(await api('GET', '/profile-changes'), 401);
+
+    const queue = await api('GET', `/profile-changes?status=PENDING&search=${encodeURIComponent(email)}`, undefined, { token: admin });
+    expectStatus(queue, 200);
+    const request = queue.data.data.find((r: any) => r.candidate.email === email);
+    assert.ok(request);
+    assert.ok(queue.data.pendingCount >= 1);
+
+    // Rejecting needs a note for the candidate.
+    expectStatus(await api('POST', `/profile-changes/${request.id}/reject`, {}, { token: admin }), 400);
+
+    const ok = await api('POST', `/profile-changes/${request.id}/approve`, { note: 'Looks good' }, { token: admin });
+    expectStatus(ok, 200);
+    assert.equal(ok.data.status, 'APPROVED');
+    assert.equal(ok.data.reviewNote, 'Looks good');
+    expectStatus(await api('POST', `/profile-changes/${request.id}/approve`, {}, { token: admin }), 409);
+    expectStatus(await api('POST', `/profile-changes/${request.id}/reject`, { note: 'x' }, { token: admin }), 409);
+
+    const res = await api('GET', '/candidate-auth/me', undefined, { token: access });
     assert.equal(res.data.headline, 'Senior QA');
     assert.equal(res.data.experience, 5);
     assert.equal(res.data.currentSalary, 1000);
     assert.equal(res.data.currency, 'USD');
+    assert.equal(res.data.visaStatus, 'Employment');
     assert.deepEqual(res.data.skills, ['Excel', 'Testing']);
     assert.match(res.data.photo, /^uploads\/images\//);
     // allow-list regression
@@ -174,19 +230,39 @@ describe('candidate portal flow (candidate-auth)', () => {
     assert.equal(res.data.categoryId, null);
   });
 
-  test('PUT /candidate-auth/me validates numbers, names and the video URL', async () => {
-    const bad = async (fields: Record<string, string>) => {
+  test('PUT /candidate-auth/me validates numbers, names and the video URL; reject and withdraw', async () => {
+    const put = async (fields: Record<string, string>) => {
       const fd = new FormData();
-      for (const [k, v] of Object.entries(fields)) fd.append(k, v);
+      for (const [k, v] of Object.entries({ reason: 'Updating my details', ...fields })) fd.append(k, v);
       return api('PUT', '/candidate-auth/me', fd, { token: access });
     };
-    expectStatus(await bad({ experience: 'lots' }), 400);
-    expectStatus(await bad({ currentSalary: 'abc' }), 400);
-    expectStatus(await bad({ firstName: '   ' }), 400);
-    expectStatus(await bad({ introVideoUrl: 'https://evil.example/video' }), 400);
-    const ok = await bad({ introVideoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' });
-    expectStatus(ok, 200);
-    assert.equal(ok.data.introVideoUrl, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+    expectStatus(await put({ experience: 'lots' }), 400);
+    expectStatus(await put({ currentSalary: 'abc' }), 400);
+    expectStatus(await put({ firstName: '   ' }), 400);
+    expectStatus(await put({ introVideoUrl: 'https://evil.example/video' }), 400);
+    const nothing = await put({ headline: 'Senior QA' });
+    expectStatus(nothing, 200);
+    assert.match(nothing.data.message, /No changes/);
+
+    const video = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+    const staged = await put({ introVideoUrl: video });
+    expectStatus(staged, 202);
+    const rejected = await api('POST', `/profile-changes/${staged.data.request.id}/reject`, { note: 'Please use a work video' }, { token: admin });
+    expectStatus(rejected, 200);
+    assert.equal(rejected.data.status, 'REJECTED');
+    let me = await api('GET', '/candidate-auth/me', undefined, { token: access });
+    assert.equal(me.data.introVideoUrl, null);
+    const mine = await api('GET', '/candidate-auth/me/profile-changes', undefined, { token: access });
+    assert.equal(mine.data[0].reviewNote, 'Please use a work video');
+
+    const again = await put({ introVideoUrl: video });
+    expectStatus(again, 202);
+    expectStatus(await api('DELETE', '/candidate-auth/me/profile-changes/does-not-exist', undefined, { token: access }), 404);
+    expectStatus(await api('DELETE', `/candidate-auth/me/profile-changes/${again.data.request.id}`, undefined, { token: access }), 200);
+    expectStatus(await api('DELETE', `/candidate-auth/me/profile-changes/${again.data.request.id}`, undefined, { token: access }), 409);
+    expectStatus(await api('POST', `/profile-changes/${again.data.request.id}/approve`, {}, { token: admin }), 409);
+    me = await api('GET', '/candidate-auth/me', undefined, { token: access });
+    assert.equal(me.data.introVideoUrl, null);
   });
 
   test('GET /candidate-auth/me/edit-history records the candidate\'s changes', async () => {
@@ -196,6 +272,7 @@ describe('candidate portal flow (candidate-auth)', () => {
     const entry = res.data.find((h: any) => h.changes.headline);
     assert.ok(entry);
     assert.equal(entry.editedBy, 'candidate');
+    assert.equal(entry.reason, 'Promoted and changed visa');
     assert.deepEqual(entry.changes.headline, { old: 'QA Engineer', new: 'Senior QA' });
     assert.equal(entry.changes.email, undefined);
     assert.equal(entry.changes.isPublic, undefined);

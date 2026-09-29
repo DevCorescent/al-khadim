@@ -17,7 +17,7 @@ export default function EmailsLayout({ children }: { children: React.ReactNode }
 
   return (
     <RequirePermission module="emails">
-      <div className="max-w-6xl mx-auto">
+      <div className="w-full">
         <div className="flex items-center justify-between border-b border-gray-200 mb-5">
           <nav className="flex gap-1 -mb-px">
             {TABS.map(tab => {

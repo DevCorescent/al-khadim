@@ -2,8 +2,8 @@
 import { prisma } from '@/lib/prisma';
 import { requirePermission } from '../permissions';
 import { body, handler, json } from '../http';
-import { absoluteUploadPath, parseUpload } from '../upload';
-import { unlink } from 'fs/promises';
+import { parseUpload } from '../upload';
+import { deleteUpload } from '../storage';
 
 /* Default config seeded on first call */
 const DEFAULTS: Record<string, any> = {
@@ -202,7 +202,7 @@ export const uploadImage = handler(async (req) => {
   const { file } = await parseUpload(req, ['image']);
   if (!file) return json({ error: 'No file uploaded' }, 400);
   if (!file.mimetype.startsWith('image/')) {
-    await unlink(absoluteUploadPath(file.path)).catch(() => {});
+    await deleteUpload(file.path);
     return json({ error: 'Only image files can be uploaded here' }, 400);
   }
   // Root-relative, deliberately: an absolute URL bakes in whichever host did

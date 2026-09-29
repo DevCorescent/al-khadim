@@ -5,6 +5,7 @@ import { hasPermission, requirePermission } from '../permissions';
 import { body, handler, HttpError, json, query } from '../http';
 import { escapeHtml, pagination, pickFields, scalarFields } from '../validate';
 import { sendTemplatedMail } from '../utils/templateRenderer';
+import { applyChecklistSafely } from '../utils/onboardingDocuments';
 
 const INDUSTRY_SELECT = { id: true, key: true, name: true, color: true };
 
@@ -31,7 +32,70 @@ function clientData(raw: any, partial: boolean) {
     data.tags = [...new Set(tags.map((t: any) => String(t).trim()).filter(Boolean))];
   }
   if (data.country === '' || data.country === null) delete data.country; // non-nullable, keeps its default
+  if (data.hsnSac !== undefined) {
+    const code = data.hsnSac == null ? '' : String(data.hsnSac).trim();
+    if (code && !/^\d{2,8}$/.test(code)) throw new HttpError(400, 'HSN/SAC code must be 2-8 digits');
+    data.hsnSac = code || null;
+  }
   return data;
+}
+
+const OPEN_DOC_STATUSES = ['REQUESTED', 'REJECTED'] as const;
+
+/** `docs` filter on the clients list (Super Admin): which document state to show. */
+function documentFilter(docs: string | undefined, now: Date): any {
+  switch (docs) {
+    case 'pending':  return { documentRequests: { some: { status: { in: [...OPEN_DOC_STATUSES] } } } };
+    case 'overdue':  return { documentRequests: { some: { status: { in: [...OPEN_DOC_STATUSES] }, dueDate: { lt: now } } } };
+    case 'review':   return { documentRequests: { some: { status: 'UPLOADED' } } };
+    case 'complete': return { AND: [{ documentRequests: { some: {} } }, { documentRequests: { every: { status: 'APPROVED' } } }] };
+    default:         return null;
+  }
+}
+
+/**
+ * Per-client document status for the given clients, plus totals across all
+ * clients (for the "documents outstanding" alerts on the clients page).
+ */
+async function documentSummaries(clientIds: string[], now: Date) {
+  const openOverdue = { status: { in: [...OPEN_DOC_STATUSES] }, dueDate: { lt: now } };
+  const [byStatus, overdue, missing, allByStatus, allOverdue, pendingClients, overdueClients] = await Promise.all([
+    prisma.clientDocumentRequest.groupBy({ by: ['clientId', 'status'], where: { clientId: { in: clientIds } }, _count: true }),
+    prisma.clientDocumentRequest.groupBy({ by: ['clientId'], where: { clientId: { in: clientIds }, ...openOverdue }, _count: true }),
+    prisma.clientDocumentRequest.findMany({
+      where: { clientId: { in: clientIds }, status: { in: [...OPEN_DOC_STATUSES] } },
+      select: { clientId: true, title: true, dueDate: true, status: true },
+      orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
+    }),
+    prisma.clientDocumentRequest.groupBy({ by: ['status'], _count: true }),
+    prisma.clientDocumentRequest.count({ where: openOverdue }),
+    prisma.clientDocumentRequest.findMany({ where: { status: { in: [...OPEN_DOC_STATUSES] } }, distinct: ['clientId'], select: { clientId: true } }),
+    prisma.clientDocumentRequest.findMany({ where: openOverdue, distinct: ['clientId'], select: { clientId: true } }),
+  ]);
+
+  const perClient: Record<string, any> = {};
+  const blank = () => ({ total: 0, requested: 0, uploaded: 0, approved: 0, rejected: 0, overdue: 0, missing: [] as any[] });
+  for (const g of byStatus) {
+    const s = (perClient[g.clientId] ||= blank());
+    s.total += g._count;
+    s[g.status.toLowerCase()] += g._count;
+  }
+  for (const g of overdue) (perClient[g.clientId] ||= blank()).overdue = g._count;
+  for (const m of missing) {
+    (perClient[m.clientId] ||= blank()).missing.push({
+      title: m.title, dueDate: m.dueDate, rejected: m.status === 'REJECTED', overdue: !!m.dueDate && m.dueDate < now,
+    });
+  }
+
+  const count = (st: string) => allByStatus.find((g) => g.status === st)?._count || 0;
+  const totals = {
+    pending: count('REQUESTED') + count('REJECTED'),
+    awaitingReview: count('UPLOADED'),
+    overdue: allOverdue,
+    clientsWithPending: pendingClients.length,
+    clientsWithOverdue: overdueClients.length,
+  };
+  return { perClient, totals };
 }
 
 /** Revenue/invoice figures are finance data: only for roles that can see invoices or finance
@@ -44,7 +108,10 @@ export const list = handler(async (req) => {
   const user = await requirePermission(req, 'clients', 'view');
   const revenue = await canSeeRevenue(user);
   const q = query(req);
-  const { search, isActive, industry, industryId, status } = q;
+  const { search, isActive, industry, industryId, status, docs } = q;
+  // Document requests are a Super Admin feature, so only they get the status and filter.
+  const seesDocuments = user.role === 'SUPER_ADMIN';
+  const now = new Date();
   const { page, limit, skip } = pagination(q, { defaultLimit: 20 });
   const where: any = {};
   if (search) {
@@ -58,6 +125,8 @@ export const list = handler(async (req) => {
   if (industry) where.industry = industry;
   if (industryId) where.industryId = industryId;
   if (status) where.status = status;
+  const docWhere = seesDocuments ? documentFilter(docs, now) : null;
+  if (docWhere) Object.assign(where, docWhere.AND ? { AND: [...(where.AND || []), ...docWhere.AND] } : docWhere);
 
   const [clients, total] = await Promise.all([
     prisma.client.findMany({
@@ -81,7 +150,12 @@ export const list = handler(async (req) => {
     filledJobs:   c.jobs.filter((j) => j.status === 'FILLED').length,
   }));
 
-  return json({ data: enriched, total, page, limit });
+  if (!seesDocuments) return json({ data: enriched, total, page, limit });
+  const { perClient, totals } = await documentSummaries(clients.map((c) => c.id), now);
+  return json({
+    data: enriched.map((c) => ({ ...c, documents: perClient[c.id] || null })),
+    total, page, limit, documentTotals: totals,
+  });
 });
 
 /* Full client detail with all analytics */
@@ -253,10 +327,12 @@ export const get = handler<{ id: string }>(async (req, { params }) => {
 });
 
 export const create = handler(async (req) => {
-  await requirePermission(req, 'clients', 'create');
+  const user = await requirePermission(req, 'clients', 'create');
   const data = clientData(await body(req), false);
   try {
     const client = await prisma.client.create({ data });
+    // Staff-added clients start approved, so onboarding documents are requested right away.
+    if (client.status === 'APPROVED') await applyChecklistSafely(client.id, user.id);
     return json(client, 201);
   } catch (err: any) {
     return json({ error: err.message }, 400);
@@ -297,6 +373,7 @@ export const approve = handler<{ id: string }>(async (req, { params }) => {
       where: { id: params.id },
       data: { status: 'APPROVED', approvedAt: new Date(), approvedByUserId: user.id, rejectedAt: null, rejectionReason: null },
     });
+    await applyChecklistSafely(client.id, user.id);
     sendTemplatedMail({
       templateSlug: 'client-profile-approved',
       to: client.email,

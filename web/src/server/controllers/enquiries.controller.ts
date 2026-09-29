@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requirePermission } from '../permissions';
 import { body, handler, json, query } from '../http';
 import { pickFields } from '../validate';
+import { applyChecklistSafely } from '../utils/onboardingDocuments';
 
 /** Fields of the public enquiry form (src/app/enquiry/page.tsx). */
 const PUBLIC_FIELDS = ['companyName', 'contactName', 'designation', 'email', 'phone', 'service', 'message'] as const;
@@ -87,6 +88,7 @@ export const convert = handler<{ id: string }>(async (req, { params }) => {
           },
         });
         clientId = newClient.id;
+        await applyChecklistSafely(newClient.id, user.id);
       }
       await prisma.clientEnquiry.update({ where: { id: enquiry.id }, data: { clientId } });
     }

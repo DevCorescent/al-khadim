@@ -7,8 +7,10 @@ import {
   Building2, FileText, BarChart3, Settings, LogOut,
   ChevronDown, ChevronsLeft, ChevronsRight, Clock, DollarSign, Globe,
   ClipboardList, Bell, UserPlus, Palette, X, Shield, Mail, Share2, TrendingUp,
-  Receipt, Landmark, PieChart, Bot,
+  Receipt, Landmark, PieChart, Bot, UserCog, ClipboardCheck,
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import api from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { canViewPath } from '@/lib/permissions';
 import { useRouter } from 'next/navigation';
@@ -43,6 +45,7 @@ const navItems: NavItem[] = [
       { label: 'Job Orders',       href: '/admin/jobs',                     icon: Briefcase },
       { label: 'Interviews',       href: '/admin/interviews',               icon: Calendar },
       { label: 'CV Registrations', href: '/admin/candidates/registrations', icon: UserCheck },
+      { label: 'Profile Approvals', href: '/admin/profile-changes',         icon: UserCog },
       { label: 'Profile Requests', href: '/admin/profile-requests',         icon: Bell },
       { label: 'Profile Shares',   href: '/admin/profile-shares',           icon: Share2 },
       { label: 'Candidate Tracking', href: '/admin/candidate-tracking',     icon: ClipboardList },
@@ -73,6 +76,7 @@ const navItems: NavItem[] = [
       { label: 'Industries', href: '/admin/settings/industries',   icon: Globe },
       { label: 'Email',      href: '/admin/settings/email',        icon: Mail },
       { label: 'AI Assistant', href: '/admin/settings/ai',         icon: Bot },
+      { label: 'Onboarding Docs', href: '/admin/settings/onboarding-documents', icon: ClipboardCheck },
     ],
   },
 ];
@@ -93,6 +97,19 @@ function useVisibleNav(): NavItem[] {
     }
     return canViewPath(user, item.href!) ? [item] : [];
   }), [user]);
+}
+
+/** Pending-count pill for nav entries that have a review queue. */
+function NavBadge({ href }: { href: string }) {
+  const enabled = href === '/admin/profile-changes';
+  const { data } = useQuery({
+    queryKey: ['profile-changes-count'],
+    queryFn: () => api.get('/profile-changes/count').then(r => r.data.pending as number),
+    enabled,
+    refetchInterval: 60_000,
+  });
+  if (!enabled || !data) return null;
+  return <span className="ml-auto text-[10px] font-bold bg-amber-400 text-white rounded-full px-1.5 min-w-[18px] text-center">{data}</span>;
 }
 
 interface SidebarProps {
@@ -172,6 +189,7 @@ export default function AdminSidebar({ open, onClose, collapsed, onToggleCollaps
                         >
                           <child.icon size={13} />
                           {child.label}
+                          <NavBadge href={child.href} />
                         </Link>
                       );
                     })}
@@ -206,6 +224,7 @@ export default function AdminSidebar({ open, onClose, collapsed, onToggleCollaps
                         >
                           <child.icon size={12} />
                           {child.label}
+                          <NavBadge href={child.href} />
                         </Link>
                       );
                     })}
@@ -360,6 +379,7 @@ function MobileSidebarBody({ pathname, onClose }: { pathname: string; onClose?: 
                         >
                           <child.icon size={12} />
                           {child.label}
+                          <NavBadge href={child.href} />
                         </Link>
                       );
                     })}

@@ -1,8 +1,7 @@
 // Serves uploaded files (replaces Express `app.use('/uploads', express.static(...))`).
-import { readFile } from 'fs/promises';
 import path from 'path';
 import { NextRequest, NextResponse } from 'next/server';
-import { absoluteUploadPath } from '@/server/upload';
+import { readUpload } from '@/server/storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,11 +13,11 @@ const TYPES: Record<string, string> = {
 
 export async function GET(_req: NextRequest, { params }: { params: { path: string[] } }) {
   try {
-    const file = absoluteUploadPath(params.path.join('/'));
-    const data = await readFile(file);
+    const file = params.path.join('/');
+    const data = await readUpload(file);
     // Files are reachable only by their random (uuid) name. Keep them out of search
     // engines and shared caches, and stop browsers from sniffing them as HTML.
-    return new NextResponse(data, {
+    return new NextResponse(new Uint8Array(data), {
       headers: {
         'Content-Type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream',
         'Cache-Control': 'private, max-age=3600',

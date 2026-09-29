@@ -1,9 +1,10 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useCandidateAuth, candidateApi } from '@/lib/candidateAuth';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { Camera, Upload, Plus, X, Save, Eye, EyeOff, Lock, Loader2, PlayCircle, AlertCircle } from 'lucide-react';
+import { Camera, Upload, Plus, X, Save, Eye, EyeOff, Lock, Loader2, PlayCircle, AlertCircle, Clock, CheckCircle2, XCircle } from 'lucide-react';
 import YouTubeEmbed from '@/components/YouTubeEmbed';
 import { isValidYouTubeUrl } from '@/lib/youtube';
 
@@ -28,7 +29,18 @@ export default function CandidateProfilePage() {
     enabled: !!accessToken,
   });
 
+  const { data: changeRequests } = useQuery({
+    queryKey: ['candidate-profile-changes'],
+    queryFn: () => api.get('/api/candidate-auth/me/profile-changes').then(r => r.data),
+    enabled: !!accessToken,
+  });
+  const pendingRequest = (changeRequests || []).find((r: any) => r.status === 'PENDING');
+  // Most recent decision, shown until the candidate submits something newer.
+  const lastDecision = !pendingRequest ? (changeRequests || []).find((r: any) => r.status === 'APPROVED' || r.status === 'REJECTED') : null;
+
   const [form, setForm] = useState<any>({});
+  const [reasonOpen, setReasonOpen] = useState(false);
+  const [reason, setReason] = useState('');
   const [skillInput, setSkillInput]   = useState('');
   const [langInput, setLangInput]     = useState('');
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -37,7 +49,7 @@ export default function CandidateProfilePage() {
   const [pwForm, setPwForm]           = useState({ current: '', next: '', confirm: '' });
   const [showPw, setShowPw]           = useState(false);
 
-  useEffect(() => {
+  function resetForm() {
     if (profile) {
       setForm({
         firstName:       profile.firstName || '',
@@ -60,7 +72,10 @@ export default function CandidateProfilePage() {
         introVideoUrl:   profile.introVideoUrl || '',
       });
     }
-  }, [profile]);
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(resetForm, [profile]);
 
   const set = (f: string, v: any) => setForm((p: any) => ({ ...p, [f]: v }));
   const addSkill = (s: string) => { const t = s.trim(); if (t && !form.skills?.includes(t)) set('skills', [...form.skills, t]); setSkillInput(''); };
@@ -84,15 +99,39 @@ export default function CandidateProfilePage() {
       });
       if (photoFile) fd.append('photo', photoFile);
       if (cvFile)    fd.append('cv', cvFile);
+      fd.append('reason', reason.trim());
       return api.put('/api/candidate-auth/me', fd);
     },
-    onSuccess: () => {
-      toast.success('Profile updated successfully!');
-      qc.invalidateQueries({ queryKey: ['candidate-me'] });
+    onSuccess: (r) => {
+      if (r.status === 202) {
+        toast.success('Sent for approval. We will email you once it is reviewed.');
+        // The live profile is unchanged until approval, so show it again.
+        setPhotoFile(null); setPhotoPreview(null); setCvFile(null);
+        resetForm();
+      } else {
+        toast(r.data?.message || 'No changes to submit.');
+      }
+      setReasonOpen(false);
+      setReason('');
+      qc.invalidateQueries({ queryKey: ['candidate-profile-changes'] });
       refreshProfile();
     },
     onError: (e: any) => toast.error(e.response?.data?.error || 'Update failed'),
   });
+
+  const withdrawMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/api/candidate-auth/me/profile-changes/${id}`),
+    onSuccess: () => {
+      toast.success('Request withdrawn. You can make new changes now.');
+      qc.invalidateQueries({ queryKey: ['candidate-profile-changes'] });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Could not withdraw'),
+  });
+
+  function openSave() {
+    if (pendingRequest) { toast.error('Your previous changes are still awaiting approval.'); return; }
+    setReasonOpen(true);
+  }
 
   const pwMutation = useMutation({
     mutationFn: () => api.put('/api/candidate-auth/change-password', {
@@ -123,20 +162,84 @@ export default function CandidateProfilePage() {
     || (profile?.photo ? `${API}/${profile.photo}` : null);
 
   return (
-    <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-5">
+    <div className="p-4 sm:p-6 w-full space-y-5">
       <div className="flex items-center justify-between mb-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">My Profile</h1>
           <p className="text-gray-500 text-sm mt-0.5">Keep your information up to date for better opportunities</p>
         </div>
         <button
-          onClick={() => updateMutation.mutate()}
-          disabled={updateMutation.isPending}
+          onClick={openSave}
+          disabled={updateMutation.isPending || !!pendingRequest}
           className="btn-primary text-sm py-2.5 px-5 disabled:opacity-60"
         >
-          {updateMutation.isPending ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : <><Save size={14} /> Save</>}
+          {pendingRequest ? <><Clock size={14} /> Awaiting approval</> : <><Save size={14} /> Save</>}
         </button>
       </div>
+
+      <p className="text-xs text-gray-400 -mt-3">Changes to your profile are reviewed by Al Khadim before they go live.</p>
+
+      {pendingRequest && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-2">
+          <div className="flex items-start gap-2.5">
+            <Clock size={16} className="text-amber-600 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-amber-800">Your changes are awaiting approval</p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                Submitted {new Date(pendingRequest.createdAt).toLocaleDateString('en-AE', { day: 'numeric', month: 'short', year: 'numeric' })}.
+                Your reason: &ldquo;{pendingRequest.reason}&rdquo;
+              </p>
+            </div>
+            <button onClick={() => withdrawMutation.mutate(pendingRequest.id)} disabled={withdrawMutation.isPending}
+              className="text-xs font-bold text-amber-700 hover:underline shrink-0 disabled:opacity-50">
+              {withdrawMutation.isPending ? 'Withdrawing…' : 'Withdraw'}
+            </button>
+          </div>
+          <ChangeTable changes={pendingRequest.changes} />
+        </div>
+      )}
+
+      {lastDecision && (
+        <div className={`rounded-2xl border p-4 flex items-start gap-2.5 ${
+          lastDecision.status === 'APPROVED' ? 'border-emerald-200 bg-emerald-50' : 'border-red-200 bg-red-50'}`}>
+          {lastDecision.status === 'APPROVED'
+            ? <CheckCircle2 size={16} className="text-emerald-600 mt-0.5 shrink-0" />
+            : <XCircle size={16} className="text-red-600 mt-0.5 shrink-0" />}
+          <div className="text-xs">
+            <p className={`text-sm font-bold ${lastDecision.status === 'APPROVED' ? 'text-emerald-800' : 'text-red-800'}`}>
+              {lastDecision.status === 'APPROVED' ? 'Your last changes were approved' : 'Your last changes were not approved'}
+            </p>
+            <p className="text-gray-600 mt-0.5">
+              Requested: {Object.keys(lastDecision.changes || {}).map(f => HISTORY_LABELS[f] || f).join(', ')}
+              {lastDecision.reviewedAt && <> · {new Date(lastDecision.reviewedAt).toLocaleDateString('en-AE', { day: 'numeric', month: 'short', year: 'numeric' })}</>}
+            </p>
+            {lastDecision.reviewNote && <p className="text-gray-700 mt-1"><strong>Note from Al Khadim:</strong> {lastDecision.reviewNote}</p>}
+          </div>
+        </div>
+      )}
+
+      {/* Portalled to <body> so the backdrop covers the fixed portal header too. */}
+      {reasonOpen && createPortal(
+        <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => !updateMutation.isPending && setReasonOpen(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-3" onClick={e => e.stopPropagation()}>
+            <h3 className="text-base font-bold text-gray-900">Why are you making this change?</h3>
+            <p className="text-xs text-gray-500">Your changes will be reviewed by Al Khadim before they appear on your profile. You will get an email once they are reviewed.</p>
+            <textarea className="input min-h-[100px]" value={reason} onChange={e => setReason(e.target.value)} maxLength={1000} autoFocus
+              placeholder="e.g. I moved to Abu Dhabi and have a new phone number." />
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setReasonOpen(false)} disabled={updateMutation.isPending}
+                className="flex-1 border border-gray-200 text-gray-600 font-semibold text-sm py-2.5 rounded-xl hover:bg-gray-50">
+                Cancel
+              </button>
+              <button type="button" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending || reason.trim().length < 3}
+                className="flex-1 btn-primary justify-center text-sm py-2.5 rounded-xl disabled:opacity-60">
+                {updateMutation.isPending ? <><Loader2 size={14} className="animate-spin" /> Sending…</> : 'Submit for approval'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
 
       {/* Photo */}
       <div className="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-5">
@@ -344,11 +447,11 @@ export default function CandidateProfilePage() {
       {/* Save button (bottom) */}
       <div className="pb-4">
         <button
-          onClick={() => updateMutation.mutate()}
-          disabled={updateMutation.isPending}
+          onClick={openSave}
+          disabled={updateMutation.isPending || !!pendingRequest}
           className="w-full btn-primary text-sm py-3 justify-center rounded-xl disabled:opacity-60"
         >
-          {updateMutation.isPending ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : <><Save size={14} /> Save All Changes</>}
+          {pendingRequest ? <><Clock size={14} /> Awaiting approval</> : <><Save size={14} /> Submit Changes for Approval</>}
         </button>
       </div>
     </div>
@@ -365,7 +468,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function Grid2({ children }: { children: React.ReactNode }) {
-  return <div className="grid sm:grid-cols-2 gap-3">{children}</div>;
+  return <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">{children}</div>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -386,6 +489,22 @@ const HISTORY_LABELS: Record<string, string> = {
   isPublic: 'Public profile', status: 'Status', cvPath: 'CV', photo: 'Photo',
   currentSalary: 'Current salary', expectedSalary: 'Expected salary', currency: 'Currency',
 };
+
+/** Old -> new values of a staged change set. */
+function ChangeTable({ changes }: { changes: Record<string, { old: any; new: any }> }) {
+  const isFile = (f: string) => f === 'cvPath' || f === 'photo';
+  return (
+    <div className="bg-white/70 rounded-xl divide-y divide-amber-100">
+      {Object.entries(changes || {}).map(([f, c]) => (
+        <div key={f} className="px-3 py-2 grid grid-cols-3 gap-2 text-[11px] items-start">
+          <p className="font-semibold text-gray-500">{HISTORY_LABELS[f] || f}</p>
+          <p className="text-red-400 line-through break-words">{isFile(f) ? (c.old ? 'Previous file' : '—') : historyValue(c.old)}</p>
+          <p className="text-emerald-600 font-medium break-words">{isFile(f) ? 'New file uploaded' : historyValue(c.new)}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function historyValue(v: any): string {
   if (v === null || v === undefined || v === '') return '—';

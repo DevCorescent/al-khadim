@@ -213,7 +213,7 @@ export default function DealDetailPage() {
       </div>
 
       {/* Content */}
-      <div className="p-6 max-w-4xl mx-auto">
+      <div className="p-6 w-full">
         <ActivityTimeline clientId={deal.client.id} dealId={deal.id} />
       </div>
 

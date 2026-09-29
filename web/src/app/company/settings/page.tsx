@@ -42,7 +42,7 @@ export default function CompanySettingsPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 max-w-2xl mx-auto">
+    <div className="p-4 sm:p-6 w-full">
       <h1 className="text-xl font-bold text-gray-900 mb-5">Account Settings</h1>
 
       {/* Who you're signed in as */}

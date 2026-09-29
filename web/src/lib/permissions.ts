@@ -33,7 +33,7 @@ export function hasPermission(
 }
 
 /** Pages only a SUPER_ADMIN can use (backend uses requireStaff(req, 'SUPER_ADMIN')). */
-const SUPER_ADMIN_ROUTES = ['/admin/settings/ai'];
+const SUPER_ADMIN_ROUTES = ['/admin/settings/ai', '/admin/profile-changes', '/admin/settings/onboarding-documents'];
 
 /**
  * Module whose `view` permission gates an admin route. Longest prefix wins.

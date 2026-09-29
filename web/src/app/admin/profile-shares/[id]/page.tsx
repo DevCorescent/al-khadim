@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { FIELD_LABELS } from '@/lib/shareableFields';
 import ScheduleInterviewModal from '@/components/admin/ScheduleInterviewModal';
+import ConfirmDialog from '@/components/admin/ConfirmDialog';
 
 const STATUS_COLORS: Record<string, string> = {
   SENT: 'bg-blue-100 text-blue-700',
@@ -38,7 +39,7 @@ function eventText(e: any) {
   switch (e.eventType) {
     case 'CREATED': return `${who} created this share`;
     case 'EMAIL_SENT': return 'Notification email sent';
-    case 'RESENT': return `${who} resent the share`;
+    case 'RESENT': return `${who} sent a reminder email${e.metadata?.to ? ` to ${e.metadata.to}` : ''}`;
     case 'VIEWED': return `${who} viewed the profile`;
     case 'DOWNLOADED': return `${who} downloaded a document`;
     case 'SHORTLISTED': return `${who} shortlisted the candidate`;
@@ -65,13 +66,15 @@ export default function ProfileShareDetailPage() {
 
   const withdrawMutation = useMutation({
     mutationFn: () => api.patch(`/profile-shares/${id}/withdraw`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['profile-share-detail', id] }); toast.success('Share withdrawn'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['profile-share-detail', id] }); toast.success('Share withdrawn'); setConfirming(null); },
     onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to withdraw'),
   });
 
+  const [confirming, setConfirming] = useState<null | 'remind' | 'withdraw'>(null);
+
   const resendMutation = useMutation({
     mutationFn: () => api.post(`/profile-shares/${id}/resend`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['profile-share-detail', id] }); toast.success('Share resent'); },
+    onSuccess: (r) => { qc.invalidateQueries({ queryKey: ['profile-share-detail', id] }); toast.success(r.data?.message || 'Reminder sent'); setConfirming(null); },
     onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to resend'),
   });
 
@@ -86,7 +89,7 @@ export default function ProfileShareDetailPage() {
   const candidateName = `${s.candidate?.firstName || ''} ${s.candidate?.lastName || ''}`.trim();
 
   return (
-    <div className="max-w-4xl mx-auto p-4 sm:p-6">
+    <div className="w-full p-4 sm:p-6">
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => router.back()} className="p-2 rounded-xl hover:bg-gray-100 text-gray-500 transition-colors">
           <ArrowLeft size={18} />
@@ -112,17 +115,49 @@ export default function ProfileShareDetailPage() {
                 <CalendarPlus size={12} /> {latestInterview ? 'Reschedule Interview' : 'Schedule Interview'}
               </button>
             )}
-            <button onClick={() => resendMutation.mutate()} disabled={resendMutation.isPending}
-              className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-xl px-3 py-1.5 hover:bg-gray-50">
-              <RotateCcw size={12} /> Resend
+            <button
+              onClick={() => setConfirming('remind')}
+              disabled={resendMutation.isPending}
+              title="Emails the company a reminder with the link to this profile, e.g. if they missed or lost the first email. Nothing else changes."
+              className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-xl px-3 py-1.5 hover:bg-gray-50 disabled:opacity-50">
+              <RotateCcw size={12} /> {resendMutation.isPending ? 'Sending…' : 'Send reminder'}
             </button>
-            <button onClick={() => { if (confirm('Withdraw this share?')) withdrawMutation.mutate(); }} disabled={withdrawMutation.isPending}
+            <button onClick={() => setConfirming('withdraw')} disabled={withdrawMutation.isPending}
               className="flex items-center gap-1.5 text-xs font-semibold text-red-500 border border-red-200 rounded-xl px-3 py-1.5 hover:bg-red-50">
               <Ban size={12} /> Withdraw
             </button>
           </>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirming === 'remind'}
+        title="Send a reminder?"
+        confirmLabel="Send reminder"
+        busy={resendMutation.isPending}
+        onConfirm={() => resendMutation.mutate()}
+        onCancel={() => setConfirming(null)}>
+        <p>
+          We&apos;ll email <strong>{s.client?.companyName || 'the company'}</strong>
+          {s.client?.email && <> at <strong>{s.client.email}</strong></>} a reminder with the link to{' '}
+          <strong>{candidateName || 'this candidate'}</strong>&apos;s profile.
+        </p>
+        <p className="text-xs text-gray-400 mt-2">Nothing else changes. Use it if they missed or lost the first email.</p>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={confirming === 'withdraw'}
+        title="Withdraw this share?"
+        tone="danger"
+        confirmLabel="Withdraw"
+        busy={withdrawMutation.isPending}
+        onConfirm={() => withdrawMutation.mutate()}
+        onCancel={() => setConfirming(null)}>
+        <p>
+          <strong>{s.client?.companyName || 'The company'}</strong> will no longer be able to see{' '}
+          <strong>{candidateName || 'this candidate'}</strong>&apos;s profile or documents. This can&apos;t be undone; you would need to share again.
+        </p>
+      </ConfirmDialog>
 
       {latestRequest?.metadata?.preferredAt && !latestInterview && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-6 flex items-center justify-between gap-3">

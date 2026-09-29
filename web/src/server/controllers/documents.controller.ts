@@ -1,6 +1,4 @@
 // Ported from api/src/routes/documents.js
-import { existsSync, unlinkSync } from 'fs';
-import { readFile } from 'fs/promises';
 import path from 'path';
 import { prisma } from '@/lib/prisma';
 import { DocumentType } from '@/generated/prisma/client';
@@ -8,6 +6,7 @@ import { requirePermission } from '../permissions';
 import { HttpError, handler, json, query } from '../http';
 import { absoluteUploadPath, parseUpload } from '../upload';
 import { pickFields, toDate } from '../validate';
+import { deleteUpload, readUpload } from '../storage';
 
 const TYPES = Object.values(DocumentType) as string[];
 const FIELDS = ['type', 'title', 'employeeId', 'candidateId', 'notes', 'expiryDate'];
@@ -73,8 +72,7 @@ export const create = handler(async (req) => {
     return json(doc, 201);
   } catch (err: any) {
     // Don't leave the stored file behind when the record isn't created.
-    const abs = diskPath(file.path);
-    if (abs && existsSync(abs)) unlinkSync(abs);
+    if (diskPath(file.path)) await deleteUpload(file.path);
     if (err instanceof HttpError) throw err;
     return json({ error: err.message }, 400);
   }
@@ -87,9 +85,8 @@ export const download = handler<{ id: string }>(async (req, { params }) => {
 
   let data: Buffer;
   try {
-    const abs = diskPath(doc.filePath);
-    if (!abs) throw new Error('outside uploads/');
-    data = await readFile(abs);
+    if (!diskPath(doc.filePath)) throw new Error('outside uploads/');
+    data = await readUpload(doc.filePath);
   } catch {
     // res.download() passed a 404 error on to the Express error handler
     // (its message exposed the server's disk path, so it isn't echoed here).
@@ -114,8 +111,7 @@ export const remove = handler<{ id: string }>(async (req, { params }) => {
   try {
     const doc = await prisma.document.findUnique({ where: { id: params.id } });
     if (!doc) return json({ error: 'Document not found' }, 404);
-    const abs = diskPath(doc.filePath);
-    if (abs && existsSync(abs)) unlinkSync(abs);
+    if (diskPath(doc.filePath)) await deleteUpload(doc.filePath);
     await prisma.document.delete({ where: { id: params.id } });
     return json({ message: 'Document deleted' });
   } catch (err: any) {

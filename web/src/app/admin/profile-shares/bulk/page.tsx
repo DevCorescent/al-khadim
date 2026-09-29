@@ -28,7 +28,8 @@ export default function BulkShareCandidatesPage() {
   // Share settings
   const [clientId, setClientId] = useState('');
   const [jobId, setJobId] = useState('');
-  const [fields, setFields] = useState<string[]>([]);
+  // Name is shared by default so a company never receives a nameless, empty profile.
+  const [fields, setFields] = useState<string[]>(['firstName', 'lastName']);
   const [includeCv, setIncludeCv] = useState(true);
   const [method, setMethod] = useState<'PORTAL' | 'EMAIL' | 'BOTH'>('BOTH');
   const [message, setMessage] = useState('');
@@ -101,7 +102,7 @@ export default function BulkShareCandidatesPage() {
     onSuccess: (res) => {
       const { created, failed } = res.data;
       if (failed.length > 0) {
-        toast(`Shared with ${created} candidate${created !== 1 ? 's' : ''}, ${failed.length} failed`, { icon: '⚠️' });
+        toast(`Shared with ${created} candidate${created !== 1 ? 's' : ''}, ${failed.length} failed: ${failed[0].error}${failed.length > 1 ? ' (and others)' : ''}`, { icon: '⚠️', duration: 8000 });
       } else {
         toast.success(`Shared with ${created} candidate${created !== 1 ? 's' : ''}`);
       }
@@ -110,10 +111,10 @@ export default function BulkShareCandidatesPage() {
     onError: (e: any) => toast.error(e.response?.data?.error || 'Bulk share failed'),
   });
 
-  const canSubmit = selected.size > 0 && clientId && (fields.length > 0 || includeCv);
+  const canSubmit = selected.size > 0 && clientId && jobId && (fields.length > 0 || includeCv);
 
   return (
-    <div className="max-w-7xl mx-auto p-4 sm:p-6">
+    <div className="w-full p-4 sm:p-6">
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => router.back()} className="p-2 rounded-xl hover:bg-gray-100 text-gray-500 transition-colors">
           <ArrowLeft size={18} />
@@ -205,11 +206,14 @@ export default function BulkShareCandidatesPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job (optional)</label>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job order *</label>
                 <select className="input text-sm w-full" value={jobId} onChange={e => setJobId(e.target.value)} disabled={!clientId}>
-                  <option value="">General profile</option>
+                  <option value="" disabled>{clientId ? 'Select a job…' : 'Select a company first'}</option>
                   {(jobs || []).map((j: any) => <option key={j.id} value={j.id}>{j.title}</option>)}
                 </select>
+                {clientId && jobs && jobs.length === 0 && (
+                  <p className="text-[11px] text-amber-600 mt-1">This company has no job orders yet. Create one under Recruitment → Job Orders first.</p>
+                )}
               </div>
 
               <div>
@@ -270,7 +274,7 @@ export default function BulkShareCandidatesPage() {
               </button>
               {!canSubmit && (
                 <p className="text-xs text-gray-400 text-center">
-                  Select candidates, a company, and at least one field or the CV
+                  Select candidates, a company, a job order, and at least one field or the CV
                 </p>
               )}
             </div>

@@ -117,6 +117,8 @@ export const testSettings = handler(async (req) => {
       transport = nodemailer.createTransport({
         host, port: Number(port) || 587, secure: !!secure,
         auth: user ? { user, pass: effectivePass } : undefined,
+        // Fail fast on a wrong host/port instead of leaving the admin waiting minutes.
+        connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 20_000,
       });
       transport.on('error', (err: any) => console.error('[mailer] test transport error:', err.message));
       const restrict = restrictFromToAuthUser !== false;

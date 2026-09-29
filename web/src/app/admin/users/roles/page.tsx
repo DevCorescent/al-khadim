@@ -263,7 +263,7 @@ export default function RolesPage() {
   });
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-10">
+    <div className="w-full space-y-6 pb-10">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link href="/admin/users" className="w-8 h-8 flex items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 border border-gray-200 transition-colors">

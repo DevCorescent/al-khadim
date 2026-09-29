@@ -17,12 +17,12 @@ export default function CandidateJobDetailPage() {
   );
 
   if (isLoading) {
-    return <div className="p-4 sm:p-6 max-w-4xl mx-auto">{back}<div className="text-center py-12 text-gray-400 text-sm">Loading job…</div></div>;
+    return <div className="p-4 sm:p-6 w-full">{back}<div className="text-center py-12 text-gray-400 text-sm">Loading job…</div></div>;
   }
 
   if (!job) {
     return (
-      <div className="p-4 sm:p-6 max-w-4xl mx-auto">
+      <div className="p-4 sm:p-6 w-full">
         {back}
         <div className="text-center py-16">
           <Briefcase size={32} className="text-gray-300 mx-auto mb-3" />
@@ -45,7 +45,7 @@ export default function CandidateJobDetailPage() {
   ].filter(d => d.value);
 
   return (
-    <div className="p-4 sm:p-6 max-w-4xl mx-auto">
+    <div className="p-4 sm:p-6 w-full">
       {back}
 
       <div className="bg-white rounded-2xl border border-gray-200 p-5 sm:p-6 mb-4">

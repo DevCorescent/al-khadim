@@ -8,10 +8,10 @@
  * to read a stored file back from disk.
  */
 import { randomUUID } from 'crypto';
-import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
 import type { NextRequest } from 'next/server';
 import { HttpError, body as readBody, formFields } from './http';
+import { putUpload } from './storage';
 
 export const UPLOAD_ROOT = path.join(process.cwd(), 'uploads');
 
@@ -28,6 +28,7 @@ const ALLOWED_TYPES = [
 const FOLDERS: Record<string, string> = {
   'image/jpeg': 'images',
   'image/png': 'images',
+  'image/webp': 'images',
   'application/pdf': 'documents',
   'application/msword': 'documents',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'documents',
@@ -64,10 +65,11 @@ async function saveFile(file: File): Promise<UploadedFile> {
   if (file.size > MAX_FILE_SIZE) throw new HttpError(400, 'File too large');
   const folder = FOLDERS[file.type] || 'misc';
   const filename = `${randomUUID()}${path.extname(file.name)}`;
-  await mkdir(path.join(UPLOAD_ROOT, folder), { recursive: true });
-  await writeFile(path.join(UPLOAD_ROOT, folder, filename), Buffer.from(await file.arrayBuffer()));
+  const stored = `uploads/${folder}/${filename}`;
+  // Local disk or Cloudflare R2, depending on R2_* (see storage.ts).
+  await putUpload(stored, Buffer.from(await file.arrayBuffer()), file.type);
   return {
-    path: `uploads/${folder}/${filename}`,
+    path: stored,
     filename,
     originalname: file.name,
     mimetype: file.type,

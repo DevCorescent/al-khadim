@@ -124,6 +124,10 @@ describe('invoices', () => {
     expectStatus(await api('PUT', `/invoices/${invoiceId}`, { discount: 'lots' }, { token }), 400);
     expectStatus(await api('PUT', `/invoices/${invoiceId}`, { items: 'nope' }, { token }), 400);
     expectStatus(await api('PUT', `/invoices/${invoiceId}`, { clientId: '' }, { token }), 400);
+    expectStatus(await api('PUT', `/invoices/${invoiceId}`, { billingHsnSac: 'SAC-99' }, { token }), 400);
+    const hsn = await api('PUT', `/invoices/${invoiceId}`, { billingHsnSac: '998519' }, { token });
+    expectStatus(hsn, 200);
+    assert.equal(hsn.data.billingHsnSac, '998519');
     expectStatus(await api('PUT', '/invoices/does-not-exist', { status: 'SENT' }, { token }), 404);
   });
 

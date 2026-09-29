@@ -35,9 +35,12 @@ describe('ai', () => {
   let admin: Awaited<ReturnType<typeof staffWithRole>>;
   let recruiter: Awaited<ReturnType<typeof staffWithRole>>;
   let aiBefore: Awaited<ReturnType<typeof siteConfig>>;
+  /** Set only once the real settings were read; never restore (or delete) from an unknown state. */
+  let snapshotTaken = false;
   const sessionId = `session-${TAG}`;
 
   async function restoreAiSettings() {
+    if (!snapshotTaken) return;
     if (aiBefore) {
       await prisma.siteConfig.update({ where: { key: 'ai' }, data: { value: aiBefore.value as any, updatedBy: aiBefore.updatedBy } });
     } else {
@@ -46,16 +49,18 @@ describe('ai', () => {
   }
 
   before(async () => {
+    // Snapshot first: if the DB read fails, nothing below may touch the live settings.
+    aiBefore = await siteConfig('ai');
+    snapshotTaken = true;
     token = await adminAuth();
     admin = await staffWithRole('ADMIN');
     recruiter = await staffWithRole('RECRUITER');
-    aiBefore = await siteConfig('ai');
   });
 
   after(async () => {
     // Disable via the API first so the server drops its cached (dummy) config,
     // then put the row back exactly as it was.
-    await api('PUT', '/ai-settings', { enabled: false, publicEnabled: false }, { token }).catch(() => {});
+    if (snapshotTaken) await api('PUT', '/ai-settings', { enabled: false, publicEnabled: false }, { token }).catch(() => {});
     await restoreAiSettings();
     await prisma.chatConversation.deleteMany({
       where: { OR: [{ sessionId }, { userId: { in: [admin?.user?.id, recruiter?.user?.id].filter(Boolean) } }] },
@@ -115,12 +120,16 @@ describe('ai', () => {
       assert.equal(res.data.apiKey, undefined);
       assert.equal(typeof res.data.hasApiKey, 'boolean');
       assert.ok(Array.isArray(res.data.allowedModels));
+      assert.ok(res.data.providers.some((p: any) => p.id === 'openrouter'));
+      assert.equal(typeof res.data.provider, 'string');
       assert.ok(res.data.rateLimitPublicPerIpPerHour > 0);
     });
 
     test('PUT validates input', async () => {
       const t = { token };
       expectStatus(await api('PUT', '/ai-settings', { model: 'gpt-99' }, t), 400);
+      expectStatus(await api('PUT', '/ai-settings', { provider: 'acme' }, t), 400);
+      expectStatus(await api('PUT', '/ai-settings', { provider: 'openai', model: 'openai/gpt-4o-mini' }, t), 400);
       expectStatus(await api('PUT', '/ai-settings', { temperature: 5 }, t), 400);
       expectStatus(await api('PUT', '/ai-settings', { maxTokens: 999999 }, t), 400);
       expectStatus(await api('PUT', '/ai-settings', { rateLimitPublicPerIpPerHour: -3 }, t), 400);
@@ -146,6 +155,17 @@ describe('ai', () => {
       assert.equal(res.data.rateLimitAdminPerUserPerHour, 34);
       assert.equal(res.data.adminSystemPromptExtra, `extra ${TAG}`);
       assert.equal(res.data.apiKey, undefined);
+      await restoreAiSettings();
+    });
+
+    test('PUT can switch to OpenRouter with a vendor/model name (restored afterwards)', async () => {
+      const res = await api('PUT', '/ai-settings', { provider: 'openrouter', model: 'anthropic/claude-sonnet-5' }, { token });
+      expectStatus(res, 200);
+      assert.equal(res.data.provider, 'openrouter');
+      assert.equal(res.data.model, 'anthropic/claude-sonnet-5');
+      const def = await api('PUT', '/ai-settings', { provider: 'openai' }, { token });
+      expectStatus(def, 200);
+      assert.equal(def.data.model, 'gpt-4o-mini'); // a provider switch without a model takes its default
       await restoreAiSettings();
     });
 
@@ -196,7 +216,10 @@ describe('ai', () => {
       const events = sseEvents(res.text);
       const last = events[events.length - 1];
       assert.equal(last.event, 'error');
-      assert.deepEqual(last.data, { error: 'AI assistant error' });
+      // Staff see a readable reason (e.g. key rejected), never the raw upstream JSON body.
+      assert.equal(typeof last.data.error, 'string');
+      assert.ok(last.data.error.length > 0);
+      assert.doesNotMatch(last.data.error, /^\d{3} |[{[]"error"/);
     });
 
     test('conversations: list, get, and owner-only access', async () => {

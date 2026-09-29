@@ -104,6 +104,18 @@ describe('clients', () => {
     expectStatus(await api('PUT', '/clients/does-not-exist', { notes: 'x' }, { token }), 404);
   });
 
+  test('HSN/SAC code must be digits; blank clears it', async () => {
+    const t = { token };
+    const set = await api('PUT', `/clients/${clientId}`, { hsnSac: ' 998519 ' }, t);
+    expectStatus(set, 200);
+    assert.equal(set.data.hsnSac, '998519');
+    expectStatus(await api('PUT', `/clients/${clientId}`, { hsnSac: '99-85' }, t), 400);
+    expectStatus(await api('PUT', `/clients/${clientId}`, { hsnSac: '123456789' }, t), 400);
+    const cleared = await api('PUT', `/clients/${clientId}`, { hsnSac: '' }, t);
+    expectStatus(cleared, 200);
+    assert.equal(cleared.data.hsnSac, null);
+  });
+
   test('regression: detail pendingRevenue counts SENT + OVERDUE invoices', async () => {
     for (const [status, price] of [['SENT', 100], ['OVERDUE', 50], ['PAID', 25], ['DRAFT', 5]] as const) {
       const r = await api('POST', '/invoices', { clientId, status, taxRate: 0, items: [{ description: status, qty: 1, unitPrice: price }] }, { token });

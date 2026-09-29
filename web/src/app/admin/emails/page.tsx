@@ -197,7 +197,7 @@ export default function EmailsPage() {
   const isSending = send.isPending || schedule.isPending || sendToGroup.isPending;
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="w-full">
       <div className="flex items-center gap-2.5 mb-5">
         <div className="w-9 h-9 rounded-xl bg-primary-100 text-primary-600 flex items-center justify-center">
           <Mail size={18} />

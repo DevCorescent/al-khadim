@@ -13,6 +13,8 @@ export const CLIENT_FORM_FIELDS = [
   { name: 'city',          label: 'City',            type: 'text' },
   { name: 'address',       label: 'Address',         type: 'text' },
   { name: 'website',       label: 'Website',         type: 'url' },
+  { name: 'hsnSac',        label: 'HSN/SAC Code',    type: 'text', pattern: '[0-9]{2,8}', inputMode: 'numeric' as const,
+    title: 'Digits only (2-8), shown on invoices' },
   { name: 'notes',         label: 'Notes',           type: 'textarea' },
 ];
 
@@ -60,6 +62,7 @@ export default function ClientFormModal({ isOpen, onClose, editing, saving, onSu
                   className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30 resize-none" />
               ) : (
                 <input type={f.type} name={f.name} required={f.required} defaultValue={editing?.[f.name] || ''}
+                  pattern={f.pattern} inputMode={f.inputMode} title={f.title}
                   className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30" />
               )}
             </div>

@@ -8,7 +8,9 @@ function NewInvoiceContent() {
   const type     = params.get('type') || 'INVOICE';
   // `?clientId=<id>` (e.g. "+ Invoice" on the client detail page) preselects the client.
   const clientId = params.get('clientId') || '';
-  return <InvoiceBuilder defaultType={type} defaultClientId={clientId} />;
+  // `?template=<id>` starts from a saved template (the Templates page "Use" button).
+  const templateId = params.get('template') || '';
+  return <InvoiceBuilder defaultType={type} defaultClientId={clientId} templateId={templateId} />;
 }
 
 export default function NewInvoicePage() {

@@ -399,7 +399,7 @@ export default function SiteEditorPage() {
 
           {/* ═══════════════ THEME ═══════════════ */}
           {tab === 'theme' && theme && (
-            <div className="max-w-2xl space-y-8">
+            <div className="w-full space-y-8">
               <SectionHeader icon={Palette} title="Global Theme" subtitle="These colours and styles apply site-wide" />
 
               <div>
@@ -487,7 +487,7 @@ export default function SiteEditorPage() {
 
           {/* ═══════════════ NAVBAR ═══════════════ */}
           {tab === 'navbar' && navbar && (
-            <div className="max-w-2xl space-y-6">
+            <div className="w-full space-y-6">
               <SectionHeader icon={Layout} title="Navbar" subtitle="Logo, navigation links and CTA button" />
 
               <div className="grid grid-cols-2 gap-4">
@@ -516,7 +516,7 @@ export default function SiteEditorPage() {
 
           {/* ═══════════════ HERO ═══════════════ */}
           {tab === 'hero' && hero && (
-            <div className="max-w-2xl space-y-6">
+            <div className="w-full space-y-6">
               <SectionHeader icon={Monitor} title="Hero Section" subtitle="The full-screen banner at top of homepage" />
 
               <Toggle label="Show Hero Section" checked={hero.enabled} onChange={(v: boolean) => setHero((h: any) => ({ ...h, enabled: v }))} />
@@ -586,7 +586,7 @@ export default function SiteEditorPage() {
 
           {/* ═══════════════ SECTIONS ═══════════════ */}
           {tab === 'sections' && sections && (
-            <div className="max-w-2xl space-y-4">
+            <div className="w-full space-y-4">
               <SectionHeader icon={Layers} title="Homepage Sections" subtitle="Toggle sections on/off and edit their headings" />
 
               {Object.entries(SECTION_LABELS).map(([key, label]) => {
@@ -635,7 +635,7 @@ export default function SiteEditorPage() {
 
           {/* ═══════════════ FOOTER ═══════════════ */}
           {tab === 'footer' && footer && (
-            <div className="max-w-2xl space-y-6">
+            <div className="w-full space-y-6">
               <SectionHeader icon={AlignLeft} title="Footer" subtitle="Logo, contact info, link columns and socials" />
 
               <div className="grid grid-cols-2 gap-4">

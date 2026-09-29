@@ -13,9 +13,8 @@
  * `inline` serves the same bytes for viewing in the browser instead of
  * downloading, which is what a document preview needs.
  */
-import { readFile } from 'fs/promises';
 import path from 'path';
-import { absoluteUploadPath } from '../upload';
+import { readUpload } from '../storage';
 import { json } from '../http';
 
 export const MIME_BY_EXT: Record<string, string> = {
@@ -81,10 +80,10 @@ export async function fileResponse(
   title: string | null | undefined,
   { inline = false, mimeType }: FileResponseOptions = {},
 ) {
-  const abs = absoluteUploadPath(storedPath);
+  const abs = storedPath;
   let data: Buffer;
   try {
-    data = await readFile(abs);
+    data = await readUpload(storedPath);
   } catch (err: any) {
     return json({ error: err?.code === 'ENOENT' ? 'File not found' : err?.message || 'File not found' }, 404);
   }

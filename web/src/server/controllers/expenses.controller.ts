@@ -1,11 +1,11 @@
 // Ported from api/src/routes/expenses.js
-import { unlink } from 'fs/promises';
 import { prisma } from '@/lib/prisma';
 import { ExpenseCategory } from '@/generated/prisma/client';
 import { hasPermission, requirePermission } from '../permissions';
 import { body, handler, HttpError, json, query } from '../http';
-import { absoluteUploadPath, parseUpload } from '../upload';
+import { parseUpload } from '../upload';
 import { pagination, toDate, toNumber } from '../validate';
+import { deleteUpload } from '../storage';
 
 /* ─── helpers ─────────────────────────────────────────────── */
 /** Interactive transactions do several round-trips; allow for a slow database. */
@@ -39,7 +39,7 @@ function nonNegative(value: any, field: string) {
 /** Best-effort removal of a stored receipt file. */
 async function removeReceipt(receiptPath: string | null) {
   if (!receiptPath) return;
-  try { await unlink(absoluteUploadPath(receiptPath)); } catch { /* already gone */ }
+  await deleteUpload(receiptPath);
 }
 
 const includeAll = {

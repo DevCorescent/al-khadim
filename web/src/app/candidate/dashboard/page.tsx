@@ -65,7 +65,7 @@ export default function CandidateDashboard() {
   const completeness = Math.round((profileComplete.filter(Boolean).length / profileComplete.length) * 100);
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 w-full">
       {/* Welcome */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 tracking-tight">

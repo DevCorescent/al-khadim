@@ -184,7 +184,7 @@ export default function AdminImportCVPage() {
 
   /* ─── STEP: upload ─── */
   if (step === 'upload') return (
-    <div className="max-w-2xl mx-auto py-6">
+    <div className="w-full py-6">
       <button onClick={() => router.back()} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-6 transition-colors">
         <ArrowLeft size={15} /> Back to Candidates
       </button>
@@ -249,7 +249,7 @@ export default function AdminImportCVPage() {
 
   /* ─── STEP: review ─── */
   if (step === 'review') return (
-    <div className="max-w-3xl mx-auto py-6 pb-10">
+    <div className="w-full py-6 pb-10">
       <div className="flex items-center justify-between mb-6">
         <button onClick={() => setStep('upload')} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors">
           <ArrowLeft size={15} /> Re-upload CV

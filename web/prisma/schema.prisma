@@ -178,19 +178,23 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  auditLogs          AuditLog[]
-  followUps          FollowUp[]
-  sentProfileShares  ProfileShare[]      @relation("SentProfileShares")
-  invitedClientUsers ClientUser[]        @relation("StaffInvitedClientUsers")
-  candidateTrackings CandidateTracking[]
-  requestedDocuments DocumentRequest[]   @relation("RequestedDocuments")
-  verifiedDocuments  DocumentRequest[]   @relation("VerifiedDocuments")
-  approvedClients    Client[]            @relation("ClientApprovedBy")
-  publishedJobs      Job[]               @relation("JobPublishedBy")
-  dealsOwned         Deal[]              @relation("DealOwner")
-  activitiesLogged   Activity[]          @relation("ActivityCreatedBy")
-  expensesApproved   Expense[]           @relation("ExpenseApprovedBy")
-  chatConversations  ChatConversation[]
+  auditLogs              AuditLog[]
+  followUps              FollowUp[]
+  sentProfileShares      ProfileShare[]           @relation("SentProfileShares")
+  invitedClientUsers     ClientUser[]             @relation("StaffInvitedClientUsers")
+  candidateTrackings     CandidateTracking[]
+  requestedDocuments     DocumentRequest[]        @relation("RequestedDocuments")
+  verifiedDocuments      DocumentRequest[]        @relation("VerifiedDocuments")
+  approvedClients        Client[]                 @relation("ClientApprovedBy")
+  reviewedProfileChanges CandidateProfileChange[] @relation("ProfileChangeReviewedBy")
+  requestedClientDocs    ClientDocumentRequest[]  @relation("ClientDocRequestedBy")
+  reviewedClientDocs     ClientDocumentRequest[]  @relation("ClientDocReviewedBy")
+  invoiceTemplates       InvoiceTemplate[]        @relation("InvoiceTemplateCreatedBy")
+  publishedJobs          Job[]                    @relation("JobPublishedBy")
+  dealsOwned             Deal[]                   @relation("DealOwner")
+  activitiesLogged       Activity[]               @relation("ActivityCreatedBy")
+  expensesApproved       Expense[]                @relation("ExpenseApprovedBy")
+  chatConversations      ChatConversation[]
 
   @@map("users")
 }
@@ -262,6 +266,7 @@ model Client {
   city             String?
   address          String?
   website          String?
+  hsnSac           String? // HSN/SAC code (digits only), printed on invoices
   notes            String?
   isActive         Boolean      @default(true)
   source           String?
@@ -276,14 +281,15 @@ model Client {
 
   tags String[] @default([])
 
-  jobs          Job[]
-  followUps     FollowUp[]
-  invoices      Invoice[]
-  enquiries     ClientEnquiry[]
-  users         ClientUser[]
-  profileShares ProfileShare[]
-  deals         Deal[]
-  activities    Activity[]
+  jobs             Job[]
+  followUps        FollowUp[]
+  invoices         Invoice[]
+  enquiries        ClientEnquiry[]
+  users            ClientUser[]
+  profileShares    ProfileShare[]
+  deals            Deal[]
+  documentRequests ClientDocumentRequest[]
+  activities       Activity[]
 
   @@map("clients")
 }
@@ -378,6 +384,7 @@ model Candidate {
   followUps        FollowUp[]
   account          CandidateAccount?
   editHistory      CandidateEditHistory[]
+  profileChanges   CandidateProfileChange[]
   profileRequests  ProfileRequest[]
   profileShares    ProfileShare[]
   tracking         CandidateTracking[]
@@ -631,6 +638,7 @@ model Invoice {
   billingAddress      String?
   billingEmail        String?
   billingPhone        String?
+  billingHsnSac       String? // client's HSN/SAC at time of issue
   // Content
   subject             String?
   description         String?
@@ -661,6 +669,7 @@ model Invoice {
   accentColor         String               @default("#ffffff") @map("accent_color")
   fontFamily          String               @default("helvetica") @map("font_family")
   logoText            String?              @map("logo_text")
+  logoUrl             String?              @map("logo_url") // uploaded logo image (uploads/images/…); overrides logoText
   logoShape           String               @default("rounded") @map("logo_shape")
   tableStyle          String               @default("striped") @map("table_style")
   watermark           String?
@@ -871,6 +880,33 @@ model CandidateEditHistory {
   createdAt   DateTime  @default(now())
 
   @@map("candidate_edit_history")
+}
+
+enum ProfileChangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  WITHDRAWN
+}
+
+/// A candidate's self-service profile edit, held until a Super Admin approves it.
+model CandidateProfileChange {
+  id           String              @id @default(cuid())
+  candidateId  String
+  candidate    Candidate           @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  changes      Json // { field: { old, new } } — same shape as CandidateEditHistory.changes
+  reason       String
+  status       ProfileChangeStatus @default(PENDING)
+  reviewedById String?
+  reviewedBy   User?               @relation("ProfileChangeReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime?
+  reviewNote   String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([status, createdAt])
+  @@index([candidateId, createdAt])
+  @@map("candidate_profile_changes")
 }
 
 model ClientUser {
@@ -1340,4 +1376,57 @@ model ChatMessage {
 
   @@index([conversationId, createdAt])
   @@map("chat_messages")
+}
+
+enum ClientDocumentStatus {
+  REQUESTED
+  UPLOADED
+  APPROVED
+  REJECTED
+}
+
+/// A document Al Khadim (Super Admin) asks a company to upload through the company portal.
+model ClientDocumentRequest {
+  id                     String               @id @default(cuid())
+  clientId               String
+  client                 Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  title                  String
+  description            String?
+  dueDate                DateTime?
+  status                 ClientDocumentStatus @default(REQUESTED)
+  filePath               String?
+  fileName               String?
+  fileSize               Int?
+  mimeType               String?
+  uploadedAt             DateTime?
+  uploadedByClientUserId String?
+  uploadedByName         String?
+  requestedById          String?
+  requestedBy            User?                @relation("ClientDocRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  reviewedById           String?
+  reviewedBy             User?                @relation("ClientDocReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt             DateTime?
+  reviewNote             String?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+
+  @@index([clientId, createdAt])
+  @@index([status])
+  @@map("client_document_requests")
+}
+
+/// A reusable starting point for invoices: sender/bank details, terms, tax and
+/// design (and optionally line items). Never holds a client, dates or a number.
+model InvoiceTemplate {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  data        Json
+  isDefault   Boolean  @default(false)
+  createdById String?
+  createdBy   User?    @relation("InvoiceTemplateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("invoice_templates")
 }

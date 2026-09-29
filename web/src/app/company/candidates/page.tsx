@@ -35,7 +35,7 @@ export default function CompanyCandidatesPage() {
   });
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 w-full">
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <h1 className="text-xl font-bold text-gray-900">Shared Candidates</h1>
         <div className="flex items-center gap-2">

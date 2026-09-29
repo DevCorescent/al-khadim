@@ -16,7 +16,7 @@ export default function FindJobsPage() {
     j.location?.toLowerCase().includes(q));
 
   return (
-    <div className="p-4 sm:p-6 max-w-4xl mx-auto">
+    <div className="p-4 sm:p-6 w-full">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Find Jobs</h1>
         <p className="text-gray-500 text-sm mt-1">Browse open positions and apply with your profile</p>

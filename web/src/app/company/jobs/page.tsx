@@ -96,7 +96,7 @@ export default function CompanyJobsPage() {
   const list = jobs || [];
 
   return (
-    <div className="p-4 sm:p-6 max-w-3xl mx-auto">
+    <div className="p-4 sm:p-6 w-full">
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Jobs</h1>

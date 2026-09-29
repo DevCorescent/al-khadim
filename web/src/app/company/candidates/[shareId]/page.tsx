@@ -135,7 +135,7 @@ export default function CompanyShareDetailPage() {
       />
 
       {docRequests && docRequests.length > 0 && (
-        <div className="max-w-3xl mx-auto mt-5">
+        <div className="w-full mt-5">
           <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
             <FileText size={13} /> Verified Documents
           </h3>
@@ -163,7 +163,7 @@ export default function CompanyShareDetailPage() {
       )}
 
       {tracking && tracking.length > 0 && (
-        <div className="max-w-3xl mx-auto mt-5 space-y-4">
+        <div className="w-full mt-5 space-y-4">
           {tracking.map((t: any) => (
             <div key={t.id}>
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
