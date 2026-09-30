@@ -38,6 +38,28 @@ interface ChatSession {
   conversationId?: string;
 }
 
+/**
+ * A random session id.
+ *
+ * `crypto.randomUUID` only exists in a secure context, so it is undefined when the site
+ * is served over plain HTTP from an IP address — which threw during render and took the
+ * whole page down with it. `crypto.getRandomValues` has no such restriction, and
+ * `Math.random` covers anything older still. The value only has to be unique per
+ * browser, never unguessable.
+ */
+function newSessionId(): string {
+  const c = typeof crypto !== 'undefined' ? crypto : undefined;
+  if (typeof c?.randomUUID === 'function') return c.randomUUID();
+  if (typeof c?.getRandomValues === 'function') {
+    const bytes = c.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+    bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+  return `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function loadSession(): ChatSession {
   if (typeof window === 'undefined') return { sessionId: '' };
   try {
@@ -49,7 +71,7 @@ function loadSession(): ChatSession {
   } catch {
     /* ignore corrupt storage */
   }
-  const fresh: ChatSession = { sessionId: crypto.randomUUID() };
+  const fresh: ChatSession = { sessionId: newSessionId() };
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
   } catch {
