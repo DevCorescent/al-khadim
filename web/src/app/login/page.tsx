@@ -40,9 +40,9 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex">
       {/* ── Left branding panel (desktop only) ── */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-slate-900 flex-col justify-between p-14">
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-[linear-gradient(135deg,#0A3D4C_0%,#061E26_100%)] flex-col justify-between p-14">
         <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-primary-400/10 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/3" />
+          <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-[#C6A15B]/10 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/3" />
           <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-primary-400/5 rounded-full blur-[80px] translate-y-1/3 -translate-x-1/4" />
           <div className="absolute inset-0 opacity-[0.03]"
             style={{ backgroundImage: 'linear-gradient(rgba(201,168,76,1) 1px, transparent 1px), linear-gradient(90deg, rgba(201,168,76,1) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
@@ -51,12 +51,10 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="relative z-10">
           <Link href="/" className="inline-flex items-center gap-3">
-            <div className="w-12 h-12 bg-primary-400 rounded-xl flex items-center justify-center shadow-lg shadow-primary-400/30">
-              <span className="text-white font-bold text-xl">A</span>
-            </div>
+            <img src="/brand/logo-96.png" alt="Al Khadim" className="w-12 h-12 rounded-full shrink-0 shadow-sm" />
             <div>
               <p className="font-bold text-white text-lg tracking-wide">AL KHADIM LLC</p>
-              <p className="text-primary-400 text-xs tracking-widest uppercase font-semibold">Premium HR Solutions</p>
+              <p className="text-[#C6A15B] text-xs tracking-widest uppercase font-semibold">Premium HR Solutions</p>
             </div>
           </Link>
         </div>
@@ -64,10 +62,10 @@ export default function LoginPage() {
         {/* Copy */}
         <div className="relative z-10 space-y-8">
           <div>
-            <p className="text-primary-400 text-xs font-bold tracking-widest uppercase mb-4">HRMS & CRM PORTAL</p>
+            <p className="text-[#C6A15B] text-xs font-bold tracking-widest uppercase mb-4">HRMS & CRM PORTAL</p>
             <h2 className="text-5xl font-bold text-white leading-tight mb-6">
               Empowering<br />
-              <span className="text-primary-400">People.</span><br />
+              <span className="text-[#C6A15B]">People.</span><br />
               Elevating<br />
               <span className="text-gray-400 font-medium">Business.</span>
             </h2>
@@ -82,7 +80,7 @@ export default function LoginPage() {
               { Icon: Shield,      value: '36+',   label: 'Clients'    },
             ].map(({ Icon, value, label }) => (
               <div key={label} className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
-                <Icon size={18} className="text-primary-400 mx-auto mb-2" />
+                <Icon size={18} className="text-[#C6A15B] mx-auto mb-2" />
                 <p className="text-white font-bold text-lg">{value}</p>
                 <p className="text-gray-500 text-xs">{label}</p>
               </div>
@@ -101,9 +99,7 @@ export default function LoginPage() {
           {/* Mobile logo */}
           <div className="lg:hidden flex justify-center mb-10">
             <Link href="/" className="inline-flex items-center gap-3">
-              <div className="w-10 h-10 bg-primary-400 rounded-xl flex items-center justify-center">
-                <span className="text-white font-bold text-lg">A</span>
-              </div>
+              <img src="/brand/logo-96.png" alt="Al Khadim" className="w-10 h-10 rounded-full shrink-0 shadow-sm" />
               <div>
                 <p className="font-bold text-gray-900 text-sm">AL KHADIM LLC</p>
                 <p className="text-[10px] text-gray-400 tracking-widest uppercase font-semibold">HRMS & CRM Portal</p>

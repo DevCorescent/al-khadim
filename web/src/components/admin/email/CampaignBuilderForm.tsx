@@ -68,7 +68,7 @@ export default function CampaignBuilderForm({ value, onChange, editorRef, initia
 
       <div>
         <label className="label mb-2 block">Body</label>
-        <EmailEditor key={editorKey} ref={editorRef} initialDesign={initialDesign} initialHtml={initialHtml} mergeTags={GENERIC_MERGE_TAGS} />
+        <EmailEditor key={editorKey} ref={editorRef} initialDesign={initialDesign} initialHtml={initialHtml} mergeTags={GENERIC_MERGE_TAGS} subject={value.subject} />
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-200 p-5">

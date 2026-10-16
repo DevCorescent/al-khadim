@@ -5,7 +5,8 @@ import api from '@/lib/api';
 import DataTable from '@/components/admin/DataTable';
 import Modal from '@/components/admin/Modal';
 import toast from 'react-hot-toast';
-import { Pencil, Trash2 } from 'lucide-react';
+import { KeyRound, Pencil, Trash2 } from 'lucide-react';
+import InterviewCredentialsPanel from '@/components/admin/interview/InterviewCredentialsPanel';
 
 const STATUS_COLORS: Record<string, string> = {
   SCHEDULED: 'bg-blue-100 text-blue-700',
@@ -28,6 +29,7 @@ export default function InterviewsPage() {
   const qc = useQueryClient();
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<any>(null);
+  const [credentialsFor, setCredentialsFor] = useState<any>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['interviews'],
@@ -70,11 +72,19 @@ export default function InterviewsPage() {
         addLabel="Schedule Interview"
         actions={(row) => (
           <div className="flex gap-1.5">
+            <button onClick={() => setCredentialsFor(row)} title="Interview login for the candidate" className="p-1.5 hover:bg-primary-50 rounded text-primary-500"><KeyRound size={14} /></button>
             <button onClick={() => { setEditing(row); setModal(true); }} className="p-1.5 hover:bg-blue-50 rounded text-blue-600"><Pencil size={14} /></button>
             <button onClick={() => { if (confirm('Delete?')) del.mutate(row.id); }} className="p-1.5 hover:bg-red-50 rounded text-red-500"><Trash2 size={14} /></button>
           </div>
         )}
       />
+
+      <Modal isOpen={!!credentialsFor} onClose={() => setCredentialsFor(null)} size="lg"
+        title={credentialsFor ? `Interview login — ${credentialsFor.candidate?.firstName || ''} ${credentialsFor.candidate?.lastName || ''}` : ''}>
+        {credentialsFor && (
+          <InterviewCredentialsPanel key={credentialsFor.id} interviewId={credentialsFor.id} interviewAt={credentialsFor.scheduledAt} compact />
+        )}
+      </Modal>
 
       <Modal isOpen={modal} onClose={() => { setModal(false); setEditing(null); }} title={editing ? 'Update Interview' : 'Schedule Interview'} size="lg">
         <form onSubmit={handleSubmit} className="space-y-4">

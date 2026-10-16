@@ -62,9 +62,9 @@ export default function ServicesPage() {
     <>
       <Navbar />
       <main className="pt-[84px]">
-        <section className="bg-gray-900 text-white py-16">
+        <section className="bg-[linear-gradient(135deg,#0A3D4C_0%,#061E26_100%)] text-white py-16">
           <div className="max-w-4xl mx-auto px-4 text-center">
-            <p className="text-primary-400 text-sm font-semibold tracking-widest uppercase mb-3">OUR SERVICES</p>
+            <p className="text-[#C6A15B] text-sm font-semibold tracking-widest uppercase mb-3">OUR SERVICES</p>
             <h1 className="font-heading text-5xl font-bold mb-4">End-to-end HR Solutions</h1>
             <p className="text-gray-400 text-lg">Tailored for your success</p>
           </div>

@@ -440,10 +440,37 @@ model Interview {
   notes          String?
   profileShareId String?
   profileShare   ProfileShare? @relation(fields: [profileShareId], references: [id])
+  credential     InterviewCredential?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
   @@map("interviews")
+}
+
+/// Login details a candidate needs to attend an interview (e.g. an assessment
+/// platform). Username and password are encrypted at rest (AES-256-GCM); staff
+/// APIs never return them — only the candidate, until `expiresAt`.
+model InterviewCredential {
+  id           String    @id @default(cuid())
+  interviewId  String    @unique @map("interview_id")
+  interview    Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  label        String?
+  loginUrl     String?   @map("login_url")
+  usernameEnc  String?   @map("username_enc")
+  passwordEnc  String?   @map("password_enc")
+  instructions String?
+  expiresAt    DateTime  @map("expires_at")
+  emailedAt    DateTime? @map("emailed_at")
+  viewedAt     DateTime? @map("viewed_at")
+  revokedAt    DateTime? @map("revoked_at")
+  purgedAt     DateTime? @map("purged_at")
+  createdById  String?   @map("created_by_id")
+  updatedById  String?   @map("updated_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([expiresAt])
+  @@map("interview_credentials")
 }
 
 model Employee {
@@ -639,6 +666,8 @@ model Invoice {
   billingEmail        String?
   billingPhone        String?
   billingHsnSac       String? // client's HSN/SAC at time of issue
+  billingTaxNo        String?              @map("billing_tax_no") // customer TRN / VAT number
+  paymentTerms        String?              @map("payment_terms") // e.g. "Immediately", "Net 30"
   // Content
   subject             String?
   description         String?
@@ -651,6 +680,8 @@ model Invoice {
   fromPhone           String?
   fromTaxNo           String? // VAT/GST/TRN/EIN etc
   fromRegNo           String? // Company registration number
+  fromWebsite         String?              @map("from_website")
+  fromEmailAlt        String?              @map("from_email_alt")
   // Tax customisation
   taxLabel            String               @default("VAT") // VAT | GST | HST | Sales Tax | Tax | None
   // Payment
@@ -663,6 +694,8 @@ model Invoice {
   bankSwift           String?
   bankRoutingNo       String?
   bankSortCode        String?
+  bankAccountName     String?              @map("bank_account_name")
+  bankBranch          String?              @map("bank_branch")
   // Design / appearance
   template            String               @default("classic") // classic | modern | minimal | corporate
   primaryColor        String               @default("#6366f1") @map("primary_color")
@@ -678,6 +711,9 @@ model Invoice {
   showFooter          Boolean              @default(true) @map("show_footer")
   showSignature       Boolean              @default(false) @map("show_signature")
   footerText          String?              @map("footer_text")
+  // Layout options beyond the columns above: document title, column labels and
+  // visibility, amount in words, stamp image, number format (see printEngine).
+  designOptions       Json?                @map("design_options")
   // Relations
   items               InvoiceItem[]
   accountTransactions AccountTransaction[]
@@ -696,6 +732,8 @@ model InvoiceItem {
   unit        String?
   unitPrice   Float    @default(0)
   total       Float    @default(0)
+  fromDate    DateTime? @map("from_date") @db.Date // service period, e.g. a monthly placement
+  toDate      DateTime? @map("to_date") @db.Date
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
 
@@ -1429,4 +1467,50 @@ model InvoiceTemplate {
   updatedAt   DateTime @updatedAt
 
   @@map("invoice_templates")
+}
+
+/// A page built with the drag-and-drop page builder and served at /<slug>.
+/// `draft` is what the editor autosaves; `published` is the snapshot visitors
+/// see (null until first published, kept when unpublished so it can return).
+model Page {
+  id          String         @id @default(cuid())
+  title       String
+  slug        String         @unique
+  status      String         @default("draft") // draft | published
+  draft       Json
+  published   Json?
+  publishedAt DateTime?      @map("published_at")
+  createdById String?        @map("created_by_id")
+  updatedById String?        @map("updated_by_id")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  revisions   PageRevision[]
+
+  @@map("pages")
+}
+
+model PageRevision {
+  id          String   @id @default(cuid())
+  pageId      String   @map("page_id")
+  page        Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  title       String
+  label       String?
+  content     Json
+  createdById String?  @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([pageId, createdAt])
+  @@map("page_revisions")
+}
+
+/// Sections saved from the page builder for reuse on any page.
+model PageBlock {
+  id          String   @id @default(cuid())
+  name        String
+  category    String   @default("Saved")
+  content     Json
+  createdById String?  @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("page_blocks")
 }

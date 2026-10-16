@@ -13,6 +13,9 @@ export const MODULES: Record<string, string[]> = {
   jobs:        ['view', 'create', 'edit', 'delete'],
   clients:     ['view', 'create', 'edit', 'delete'],
   interviews:  ['view', 'create', 'edit', 'delete'],
+  // Set / replace / revoke the login credentials a candidate uses to attend an
+  // interview. Never granted by a preset: SUPER_ADMIN, or a role they assign it to.
+  interview_credentials: ['manage'],
   employees:   ['view', 'create', 'edit', 'delete'],
   attendance:  ['view', 'create', 'edit'],
   leave:       ['view', 'approve', 'reject'],
@@ -24,6 +27,7 @@ export const MODULES: Record<string, string[]> = {
   emails:      ['view', 'create', 'edit', 'delete', 'send'],
   reports:     ['view', 'export'],
   site_editor: ['view', 'edit'],
+  pages:       ['view', 'create', 'edit', 'delete', 'publish'],
   users:       ['view', 'create', 'edit', 'delete'],
   settings:    ['view', 'edit'],
 };
@@ -38,7 +42,7 @@ export const allPermissions = (except: string[] = []): Permissions =>
 export const ROLE_PRESETS: Record<string, Permissions> = {
   // All modules; user management without delete; system settings read-only.
   ADMIN: {
-    ...allPermissions(),
+    ...allPermissions(['interview_credentials']),
     users: ['view', 'create', 'edit'],
     settings: ['view', 'edit'],
   },

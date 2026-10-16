@@ -1,43 +1,28 @@
-import Navbar from '@/components/Navbar';
-import Footer from '@/components/Footer';
-import HomeHero from '@/components/home/HomeHero';
-import HomeClients from '@/components/home/HomeClients';
-import HomeStats from '@/components/home/HomeStats';
-import HomeServices from '@/components/home/HomeServices';
-import HomeProcess from '@/components/home/HomeProcess';
-import HomeWhyUs from '@/components/home/HomeWhyUs';
-import HomeIndustries from '@/components/home/HomeIndustries';
-import HomeJobs from '@/components/home/HomeJobs';
-import HomeCandidates from '@/components/home/HomeCandidates';
-import HomeGlobalBanner from '@/components/home/HomeGlobalBanner';
-import HomeTestimonials from '@/components/home/HomeTestimonials';
-import HomeAwards from '@/components/home/HomeAwards';
-import HomeCEO from '@/components/home/HomeCEO';
-import HomeCVUpload from '@/components/home/HomeCVUpload';
-import HomeCTA from '@/components/home/HomeCTA';
+import type { Metadata } from 'next';
+import { cache } from 'react';
+import HomeRenderer from '@/components/homepage/HomeRenderer';
+import { getWebsiteContent } from '@/server/siteContent';
+import { mediaUrl } from '@/lib/mediaUrl';
 
-export default function HomePage() {
-  return (
-    <>
-      <Navbar />
-      <main>
-        <HomeHero />
-        <HomeClients />
-        <HomeStats />
-        <HomeServices />
-        <HomeProcess />
-        <HomeWhyUs />
-        <HomeIndustries />
-        <HomeJobs />
-        <HomeCandidates />
-        <HomeGlobalBanner />
-        <HomeTestimonials />
-        <HomeAwards />
-        <HomeCEO />
-        <HomeCVUpload />
-        <HomeCTA />
-      </main>
-      <Footer />
-    </>
-  );
+// Content is edited live from the Website Builder, so always render from the database.
+export const dynamic = 'force-dynamic';
+
+const load = cache(getWebsiteContent);
+
+export async function generateMetadata({ searchParams }: { searchParams: Record<string, string> }): Promise<Metadata> {
+  const { homepage } = await load();
+  const { seo } = homepage;
+  const image = mediaUrl(seo.ogImage);
+  return {
+    title: seo.title,
+    description: seo.description,
+    keywords: seo.keywords,
+    openGraph: { title: seo.title, description: seo.description, type: 'website', ...(image ? { images: [image] } : {}) },
+    ...(searchParams?.preview === '1' ? { robots: { index: false, follow: false } } : {}),
+  };
+}
+
+export default async function HomePage({ searchParams }: { searchParams: Record<string, string> }) {
+  const content = await load();
+  return <HomeRenderer initial={content} preview={searchParams?.preview === '1'} />;
 }

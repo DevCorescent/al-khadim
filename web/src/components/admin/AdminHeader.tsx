@@ -36,7 +36,8 @@ const breadcrumbs: Record<string, { label: string; parent?: string; parentHref?:
   '/admin/reports':                   { label: 'Reports' },
   '/admin/users':                     { label: 'Users',            parent: 'Team' },
   '/admin/users/roles':               { label: 'Roles & Perms',   parent: 'Team' },
-  '/admin/site-editor':               { label: 'Site Editor' },
+  '/admin/site-editor':               { label: 'Homepage Builder', parent: 'Website' },
+  '/admin/pages':                     { label: 'Pages',            parent: 'Website' },
   '/admin/settings':                  { label: 'Settings' },
 };
 

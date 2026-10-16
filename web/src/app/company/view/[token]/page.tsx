@@ -114,9 +114,7 @@ export default function PublicShareViewPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="w-full mb-5 flex items-center gap-2">
-        <div className="w-7 h-7 bg-primary-400 rounded-lg flex items-center justify-center">
-          <span className="text-white font-bold text-xs">A</span>
-        </div>
+        <img src="/brand/logo-96.png" alt="Al Khadim" className="w-7 h-7 rounded-full shrink-0 shadow-sm" />
         <span className="font-bold text-gray-900 text-sm">Al Khadim</span>
         <span className="text-xs text-gray-400 ml-2">Shared candidate profile</span>
       </div>

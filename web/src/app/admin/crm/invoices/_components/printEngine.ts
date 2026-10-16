@@ -1,5 +1,6 @@
 // Standalone HTML print engine — generates a complete print-ready document
 // from invoice data + design settings. No DOM capture.
+import { amountInWords, fillLabel, normalizeDesign, type InvoiceDesignOptions } from '@/lib/invoiceDesign';
 
 export interface PrintInvoice {
   invoiceNo: string; docType: string; status: string; currency: string;
@@ -8,13 +9,16 @@ export interface PrintInvoice {
   fromName?: string; fromAddress?: string; fromEmail?: string; fromPhone?: string;
   fromTaxNo?: string; fromRegNo?: string;
   billingName?: string; billingAddress?: string; billingEmail?: string; billingPhone?: string; billingHsnSac?: string;
+  billingTaxNo?: string; paymentTerms?: string; fromWebsite?: string; fromEmailAlt?: string;
+  bankAccountName?: string; bankBranch?: string;
+  designOptions?: Partial<InvoiceDesignOptions> | null;
   subtotal: number; discount: number; discountType: string; taxRate: number;
   tax: number; totalAmount: number; taxLabel?: string;
   paymentMethod?: string; paymentRef?: string;
   bankName?: string; bankAccount?: string; bankIBAN?: string; bankSwift?: string;
   bankRoutingNo?: string; bankSortCode?: string;
   terms?: string; notes?: string;
-  items: { description: string; qty: number; unit?: string; unitPrice: number; total: number }[];
+  items: { description: string; qty: number; unit?: string; unitPrice: number; total: number; fromDate?: string | null; toDate?: string | null }[];
   // Design
   template?: string; primaryColor?: string; accentColor?: string; fontFamily?: string;
   logoText?: string; logoUrl?: string | null; logoShape?: string; tableStyle?: string;
@@ -29,6 +33,7 @@ const FONT_STACK: Record<string, string> = {
   courier:   "'Courier New', Courier, monospace",
   trebuchet: "'Trebuchet MS', Tahoma, Geneva, sans-serif",
   inter:     "Inter, 'Helvetica Neue', Arial, sans-serif",
+  calibri:   "Calibri, Carlito, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
 };
 
 const DOC_LABELS: Record<string,string> = {
@@ -438,6 +443,210 @@ function templateCorporate(inv: PrintInvoice, pc: string, ac: string, font: stri
   </div>`;
 }
 
+
+// ─── Template: Letterhead (Al Khadim tax invoice) ──────────────────────────
+const esc = (v: any) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const nl2br = (v: any) => esc(v).replace(/\n/g, '<br/>');
+
+/** Small line icons for the letterhead contact list (Lucide paths). */
+const ICON: Record<string, string> = {
+  phone: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>',
+  globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+  mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>',
+  pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
+};
+const icon = (name: string, size = 13) =>
+  `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#1f2937" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px">${ICON[name]}</svg>`;
+
+function assetSrc(path?: string | null): string {
+  if (!path) return '';
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  return `${origin}/${String(path).replace(/^\/+/, '').replace(/"/g, '')}`;
+}
+
+function docTitle(inv: PrintInvoice, d: InvoiceDesignOptions): string {
+  if (d.docTitle) return d.docTitle;
+  if (inv.docType === 'QUOTATION') return 'QUOTATION';
+  if (inv.docType === 'PROFORMA_INVOICE') return 'PROFORMA INVOICE';
+  return inv.taxRate > 0 ? 'TAX INVOICE' : 'INVOICE';
+}
+
+/** The decorative band at the top and bottom of the letterhead: dark bar with a lighter slanted piece. */
+function band(pc: string, light: string, height: number, content = '') {
+  return `<div style="position:relative;height:${height}px;background:${pc};overflow:hidden">
+    <div style="position:absolute;left:14%;top:0;bottom:0;width:13%;background:${light};transform:skewX(-35deg);opacity:.85"></div>
+    <div style="position:absolute;left:0;top:0;bottom:0;width:17%;background:${pc}"></div>
+    ${content ? `<div style="position:relative;height:100%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;letter-spacing:.4px;text-transform:uppercase">${content}</div>` : ''}
+  </div>`;
+}
+
+function templateLetterhead(inv: PrintInvoice, pc: string): string {
+  const d = normalizeDesign(inv.designOptions);
+  const L = (k: keyof InvoiceDesignOptions['labels']) => esc(fillLabel(d.labels[k], { currency: inv.currency, rate: inv.taxRate }));
+  const c = d.columns;
+  const df = inv.dateFormat;
+  const name = inv.fromName || 'Company Name';
+  const addrLines = String(inv.fromAddress || '').split('\n').map(x => x.trim().replace(/,+$/, '')).filter(Boolean);
+  const officeLine = addrLines.join(', ');
+  const city = addrLines.slice(-1)[0] || '';
+  const rate = Number(inv.taxRate) || 0;
+  const td = 'border:1px solid #111;padding:6px 7px;vertical-align:middle';
+
+  // Header: logo + name on the left, contact list on the right.
+  const logo = inv.logoUrl
+    ? `<img src="${assetSrc(inv.logoUrl)}" alt="" style="width:118px;height:118px;object-fit:contain;border-radius:50%"/>`
+    : `<div style="width:96px;height:96px;border-radius:50%;background:${pc};color:#fff;font-size:34px;font-weight:800;line-height:96px;text-align:center">${esc((inv.logoText || name[0] || '?').toUpperCase())}</div>`;
+  const contacts = [
+    inv.fromPhone && ['phone', inv.fromPhone],
+    inv.fromWebsite && ['globe', inv.fromWebsite],
+    inv.fromEmail && ['mail', inv.fromEmail],
+    inv.fromEmailAlt && ['mail', inv.fromEmailAlt],
+  ].filter(Boolean) as [string, string][];
+
+  const header = !inv.showHeader ? '' : `
+  <div style="padding:38px 52px 0">
+    ${band(pc, d.bandColor, 22)}
+    <table width="100%" style="margin-top:16px"><tr>
+      <td style="vertical-align:middle;width:58%">
+        <table><tr>
+          <td style="padding-right:18px">${logo}</td>
+          <td style="font-size:30px;font-weight:800;color:${pc};letter-spacing:.5px;text-transform:uppercase">${esc(name)}</td>
+        </tr></table>
+      </td>
+      <td style="vertical-align:middle;text-align:right">
+        ${contacts.map(([i, v]) => `<div style="font-size:14px;font-weight:700;color:#111;line-height:1.75">${icon(i)}&nbsp;&nbsp;${esc(v)}</div>`).join('')}
+        ${officeLine ? `<div style="font-size:13px;font-weight:700;color:#111;margin-top:8px">${icon('pin')}&nbsp;Office: ${esc(officeLine)}</div>` : ''}
+      </td>
+    </tr></table>
+    <div style="height:2px;background:${pc};margin-top:10px;opacity:.85"></div>
+  </div>`;
+
+  // Item table columns.
+  const cols: { key: string; label: string; width?: number; align: string }[] = [];
+  if (c.slNo) cols.push({ key: 'slNo', label: L('slNo'), width: 46, align: 'center' });
+  cols.push({ key: 'description', label: L('description'), align: 'left' });
+  if (c.period) cols.push({ key: 'fromDate', label: L('fromDate'), width: 62, align: 'center' }, { key: 'toDate', label: L('toDate'), width: 58, align: 'center' });
+  if (c.qty) cols.push({ key: 'qty', label: L('qty'), width: 28, align: 'center' });
+  if (c.rate) cols.push({ key: 'rate', label: L('rate'), width: 48, align: 'right' });
+  if (c.amount) cols.push({ key: 'amount', label: L('amount'), width: 66, align: 'right' });
+  if (c.vat) cols.push({ key: 'vat', label: L('vat'), width: 58, align: 'right' });
+  if (c.total) cols.push({ key: 'total', label: L('total'), width: 80, align: 'right' });
+
+  const rows = inv.items.map((it, i) => {
+    const amount = (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
+    const vat = amount * rate / 100;
+    const cell: Record<string, string> = {
+      slNo: String(i + 1),
+      description: nl2br(it.description),
+      fromDate: it.fromDate ? fmtDate(String(it.fromDate), df) : '',
+      toDate: it.toDate ? fmtDate(String(it.toDate), df) : '',
+      qty: it.qty && Number(it.qty) !== 1 ? `${it.qty}${it.unit ? ' ' + esc(it.unit) : ''}` : (it.unit ? `1 ${esc(it.unit)}` : ''),
+      rate: Number(it.qty) !== 1 ? fmtN(it.unitPrice) : '',
+      amount: fmtN(amount),
+      vat: rate ? fmtN(vat) : '',
+      total: fmtN(d.lineTotalIncludesVat ? amount + vat : amount),
+    };
+    return `<tr>${cols.map(col => `<td style="${td};text-align:${col.align};height:44px">${cell[col.key]}</td>`).join('')}</tr>`;
+  }).join('');
+
+  const n = cols.length;
+  const labelSpan = Math.min(3, Math.max(1, n - 2));
+  const wordsSpan = Math.max(1, n - labelSpan - 1);
+  const discountAmt = inv.discount > 0 ? (inv.discountType === 'PERCENT' ? inv.subtotal * inv.discount / 100 : inv.discount) : 0;
+  const totalsRows: [string, string, boolean][] = [
+    ...(discountAmt > 0 ? [['Gross Amount', fmtN(inv.subtotal), false], ['Discount', `- ${fmtN(discountAmt)}`, false]] as [string, string, boolean][] : []),
+    [L('subtotal'), fmtN(inv.subtotal - discountAmt), false],
+    ...(rate ? [[L('vatLine'), fmtN(inv.tax), false] as [string, string, boolean]] : []),
+    [L('grandTotal'), fmtN(inv.totalAmount), true],
+  ];
+  const words = d.amountInWords ? `${esc(inv.currency)}: ${esc(amountInWords(inv.totalAmount, d.currencyMajor, d.currencyMinor))}` : '';
+  const totals = totalsRows.map(([label, value, strong], i) => `<tr>
+      ${i === 0 ? `<td colspan="${wordsSpan}" rowspan="${totalsRows.length}" style="${td};text-align:center;font-weight:700;font-size:12.5px">${words}</td>` : ''}
+      <td colspan="${labelSpan}" style="border:1px solid #111;padding:3px 7px;text-align:center;font-size:12px">${label}</td>
+      <td style="border:1px solid #111;padding:3px 7px;text-align:right;font-size:12px;${strong ? 'font-weight:800' : ''}">${value}</td>
+    </tr>`).join('');
+
+  const dueDate = inv.dueDate || inv.validUntil || '';
+  const metaRow = (label: string, value: string) => value
+    ? `<tr><td style="padding:1px 0;font-size:12px;width:120px">${label}</td><td style="padding:1px 0 1px 12px;font-size:12px">${esc(value)}</td></tr>` : '';
+  const bankLines = [
+    inv.bankAccountName && `<div style="font-weight:700">${esc(inv.bankAccountName)}</div>`,
+    inv.bankName && `<div><b>BANK NAME:</b>&nbsp;&nbsp;&nbsp;<b>${esc(inv.bankName)}</b></div>`,
+    inv.bankAccount && `<div><b>Account No.</b>&nbsp;&nbsp;&nbsp;<b>${esc(inv.bankAccount)}</b></div>`,
+    inv.bankIBAN && `<div><b>IBAN:</b>&nbsp;&nbsp;<b>${esc(inv.bankIBAN)}</b></div>`,
+    inv.bankSwift && `<div><b>SWIFT CODE:</b> <b>${esc(inv.bankSwift)}</b></div>`,
+    inv.bankBranch && `<div><b>Branch:</b>&nbsp;&nbsp;&nbsp;<b>${esc(inv.bankBranch)}</b></div>`,
+  ].filter(Boolean).join('');
+  const paymentNote = d.paymentNote || inv.paymentRef || '';
+  const stamp = d.stampUrl
+    ? `<img src="${assetSrc(d.stampUrl)}" alt="" style="max-width:190px;max-height:140px;object-fit:contain;display:block;margin:0 auto"/>`
+    : `<div style="width:190px;border-top:1px solid #555;margin:60px auto 0"></div>`;
+
+  return `
+  ${header}
+  <div style="margin:22px 52px 0;border:1.5px solid #111;font-size:12.5px;color:#111">
+    ${d.showBoxContacts ? `<div style="text-align:right;padding:5px 6px 0;font-size:11px;line-height:1.45">
+      ${inv.fromPhone ? `<div>M : ${esc(inv.fromPhone)}</div>` : ''}
+      ${officeLine ? `<div style="font-weight:700">Office : ${esc(officeLine)}</div>` : ''}
+      ${inv.fromEmail ? `<div style="font-weight:700">${esc(inv.fromEmail)}</div>` : ''}
+    </div>` : ''}
+    <div style="text-align:center;font-weight:800;font-size:13px;padding:${d.showBoxContacts ? '10px' : '16px'} 0 4px">${esc(docTitle(inv, d))}</div>
+    ${d.showTrn && inv.fromTaxNo ? `<div style="text-align:center;font-weight:800;font-size:12.5px;padding-bottom:6px">TRN: ${esc(inv.fromTaxNo)}</div>` : ''}
+
+    <table width="100%" style="border-top:1.5px solid #111">
+      <tr>
+        <td style="width:61%;vertical-align:top;padding:4px 6px 8px">
+          <div style="font-weight:800;text-decoration:underline;margin-bottom:3px">${L('customer')}</div>
+          <table width="100%">
+            <tr><td style="width:70px;vertical-align:top;padding:1px 0">${L('name')} :</td><td style="padding:1px 0">${esc(inv.billingName || '')}</td></tr>
+            <tr><td style="vertical-align:top;padding:1px 0">${L('address')} :</td><td style="padding:1px 0;line-height:1.5">${nl2br(inv.billingAddress || '')}</td></tr>
+            <tr><td style="padding:6px 0 1px">${L('tel')}:</td><td style="padding:6px 0 1px">${esc(inv.billingPhone || '')}</td></tr>
+            <tr><td style="padding:1px 0">${L('trn')}:</td><td style="padding:1px 0">${esc(inv.billingTaxNo || '')}</td></tr>
+          </table>
+        </td>
+        <td style="vertical-align:top;border-left:1.5px solid #111;padding:4px 8px 8px">
+          <div style="font-weight:800">${esc(name)}</div>
+          ${city ? `<div style="font-weight:700;margin-bottom:10px">${esc(city)}</div>` : '<div style="height:10px"></div>'}
+          <table>
+            ${metaRow(L('invoiceNo'), inv.invoiceNo)}
+            ${metaRow(L('invoiceDate'), fmtDate(inv.issueDate, df))}
+            ${metaRow(L('paymentTerms'), inv.paymentTerms || '')}
+            ${dueDate ? `<tr><td colspan="2" style="height:14px"></td></tr>${metaRow(L('dueDate'), fmtDate(dueDate, df))}` : ''}
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <table width="100%" style="border-top:1.5px solid #111;table-layout:auto">
+      <thead><tr>${cols.map(col => `<th style="border:1px solid #111;padding:5px 6px;font-size:12px;font-weight:800;text-align:center${col.width ? `;width:${col.width}px` : ''}">${col.label}</th>`).join('')}</tr></thead>
+      <tbody>${rows}${totals}</tbody>
+    </table>
+
+    <div style="padding:14px 4px 10px;line-height:1.5">
+      ${inv.notes || d.noteHeading ? `<div style="font-weight:800;text-decoration:underline">${esc(d.noteHeading)}</div>` : ''}
+      ${inv.notes ? `<div style="margin-bottom:16px">${nl2br(inv.notes)}</div>` : ''}
+      ${paymentNote ? `<div style="margin-bottom:14px">${esc(paymentNote)}</div>` : ''}
+      <table width="100%"><tr>
+        <td style="vertical-align:top;padding-left:14px;width:52%;line-height:1.6">
+          ${bankLines}
+          ${d.showReceivedBy ? `<div style="font-weight:800;margin:46px 0 0 50px">${esc(d.receivedByLabel)}</div>` : ''}
+        </td>
+        <td style="vertical-align:bottom;text-align:center">
+          ${stamp}
+          ${d.stampUrl ? '' : `<div style="font-size:11px;margin-top:4px">${esc(d.signatoryLabel)}<br/>${esc(name)}</div>`}
+        </td>
+      </tr></table>
+      ${inv.terms ? `<div style="margin-top:12px;font-size:10.5px;color:#444;white-space:pre-line">${esc(inv.terms)}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+function letterheadFooter(inv: PrintInvoice, pc: string): string {
+  if (!inv.showFooter) return '';
+  const d = normalizeDesign(inv.designOptions);
+  return `<div style="margin-top:auto;padding:24px 52px 34px">${band(pc, d.bandColor, 40, esc(inv.footerText || ''))}</div>`;
+}
+
 // ─── Bank + Terms + Footer ──────────────────────────────────────────────────
 function bankAndTerms(inv: PrintInvoice, pc: string): string {
   const hasBankDetails = inv.bankName || inv.bankIBAN || inv.bankAccount;
@@ -504,8 +713,10 @@ export function buildPrintHTML(inv: PrintInvoice): string {
   const font = FONT_STACK[inv.fontFamily || 'helvetica'] || FONT_STACK.helvetica;
   const tmpl = inv.template || 'classic';
 
+  const letterhead = tmpl === 'letterhead';
   let body = '';
-  if      (tmpl === 'modern')    body = templateModern(inv, pc, ac, font);
+  if      (letterhead)           body = templateLetterhead(inv, pc);
+  else if (tmpl === 'modern')    body = templateModern(inv, pc, ac, font);
   else if (tmpl === 'minimal')   body = templateMinimal(inv, pc, ac, font);
   else if (tmpl === 'corporate') body = templateCorporate(inv, pc, ac, font);
   else                           body = templateClassic(inv, pc, ac, font);
@@ -527,9 +738,9 @@ export function buildPrintHTML(inv: PrintInvoice): string {
   ${watermarkOverlay(inv)}
   <div style="position:relative;z-index:1;flex:1">
     ${body}
-    ${bankAndTerms(inv, pc)}
+    ${letterhead ? '' : bankAndTerms(inv, pc)}
   </div>
-  ${footer(inv, pc)}
+  ${letterhead ? letterheadFooter(inv, pc) : footer(inv, pc)}
 </body>
 </html>`;
 }

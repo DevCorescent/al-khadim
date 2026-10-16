@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { FIELD_LABELS } from '@/lib/shareableFields';
 import ScheduleInterviewModal from '@/components/admin/ScheduleInterviewModal';
+import InterviewCredentialsPanel from '@/components/admin/interview/InterviewCredentialsPanel';
 import ConfirmDialog from '@/components/admin/ConfirmDialog';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -193,6 +194,9 @@ export default function ProfileShareDetailPage() {
             )}
           </div>
           {latestInterview.notes && <p className="text-xs text-indigo-700 mt-2">{latestInterview.notes}</p>}
+          <div className="mt-3 pt-3 border-t border-indigo-200/70">
+            <InterviewCredentialsPanel interviewId={latestInterview.id} interviewAt={latestInterview.scheduledAt} compact />
+          </div>
         </div>
       )}
 

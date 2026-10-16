@@ -8,12 +8,13 @@ import { prisma } from '@/lib/prisma';
 import { requirePermission } from '../permissions';
 import { body, handler, json } from '../http';
 import { LOGO_PATH } from './invoices.controller';
+import { cleanDesign } from '@/lib/invoiceDesign';
 
 const TEXT_KEYS = [
   'docType', 'currency', 'dateFormat', 'subject', 'description',
-  'fromName', 'fromAddress', 'fromEmail', 'fromPhone', 'fromTaxNo', 'fromRegNo',
-  'discountType', 'taxLabel', 'paymentMethod',
-  'bankName', 'bankAccount', 'bankIBAN', 'bankSwift', 'bankRoutingNo', 'bankSortCode',
+  'fromName', 'fromAddress', 'fromEmail', 'fromPhone', 'fromTaxNo', 'fromRegNo', 'fromWebsite', 'fromEmailAlt',
+  'discountType', 'taxLabel', 'paymentMethod', 'paymentRef', 'paymentTerms',
+  'bankName', 'bankAccount', 'bankIBAN', 'bankSwift', 'bankRoutingNo', 'bankSortCode', 'bankAccountName', 'bankBranch',
   'terms', 'notes',
   'template', 'primaryColor', 'accentColor', 'fontFamily', 'logoText', 'logoUrl', 'logoShape', 'tableStyle',
   'watermark', 'footerText',
@@ -41,6 +42,10 @@ function cleanData(raw: any) {
   }
   for (const k of BOOL_KEYS) if (raw[k] !== undefined) out[k] = !!raw[k];
   if (out.logoUrl && !LOGO_PATH.test(out.logoUrl)) throw badRequest('Invalid logo image');
+  if (raw.designOptions !== undefined && raw.designOptions !== null) {
+    try { out.designOptions = cleanDesign(raw.designOptions, p => LOGO_PATH.test(p)); }
+    catch (e: any) { throw badRequest(e.message); }
+  }
   if (raw.items !== undefined && raw.items !== null) {
     if (!Array.isArray(raw.items) || raw.items.length > MAX_ITEMS) throw badRequest(`items must be a list of up to ${MAX_ITEMS}`);
     out.items = raw.items

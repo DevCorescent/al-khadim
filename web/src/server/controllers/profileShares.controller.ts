@@ -6,7 +6,9 @@ import type { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireApprovedClient } from '../auth';
 import { requirePermission } from '../permissions';
-import { body, clientIp, handler, json, query } from '../http';
+import { body, clientIp, handler, HttpError, json, query } from '../http';
+import { cleanCredentialInput, credentialsEmailBlock, saveCredentials } from '../utils/interviewCredentials';
+import { getTemplateBySlug } from '../utils/templateRenderer';
 import { rateLimit } from '../rateLimit';
 import { downloadName, fileResponse, isViewableType, MIME_BY_EXT, wantsInline } from '../utils/fileResponse';
 import { sendTemplatedMail } from '../utils/templateRenderer';
@@ -723,9 +725,15 @@ export const get = handler<{ id: string }>(async (req, { params }) => {
 export const scheduleInterview = handler<{ id: string }>(async (req, { params }) => {
   const user = await requirePermission(req, 'interviews', 'create');
   try {
-    const { scheduledAt, mode, meetLink, location, interviewers, notes } = await body(req);
+    const { scheduledAt, mode, meetLink, location, interviewers, notes, credentials: rawCredentials } = await body(req);
     if (!scheduledAt) return json({ error: 'scheduledAt is required' }, 400);
     const scheduledDate = toDate(scheduledAt, 'scheduledAt');
+    // Optional interview login for the candidate — only for staff allowed to manage them.
+    let credentials: ReturnType<typeof cleanCredentialInput> | null = null;
+    if (rawCredentials) {
+      await requirePermission(req, 'interview_credentials', 'manage');
+      credentials = cleanCredentialInput(rawCredentials, { scheduledAt: scheduledDate || undefined });
+    }
     if (!['ONLINE', 'OFFLINE'].includes(mode)) return json({ error: 'mode must be ONLINE or OFFLINE' }, 400);
     if (mode === 'ONLINE' && !meetLink) return json({ error: 'A meeting link is required for an online interview' }, 400);
     if (mode === 'OFFLINE' && !location) return json({ error: 'A location is required for an offline interview' }, 400);
@@ -769,6 +777,8 @@ export const scheduleInterview = handler<{ id: string }>(async (req, { params })
           profileShareId: share.id,
         } as any,
       });
+
+      if (credentials) await saveCredentials(createdInterview.id, credentials, user.id, tx);
 
       // A further interview round is fine (e.g. INTERVIEWED → INTERVIEW_SCHEDULED), but an
       // offered/placed application keeps its status; the interview itself is still created.
@@ -829,15 +839,27 @@ export const scheduleInterview = handler<{ id: string }>(async (req, { params })
            <p>Login: <a href="${candidateLoginUrl}">${candidateLoginUrl}</a><br/>Email: ${escapeHtml(share.candidate.email)}<br/>Temporary password: <strong>${newAccountPassword}</strong></p>
            <p>Please log in and change your password.</p>`
         : `<p>You can view this anytime in your <a href="${candidateLoginUrl}">candidate dashboard</a>.</p>`;
+      // Interview login details: their own slot in the template, or — for a template
+      // edited before the slot existed — appended to the account block.
+      let credentialsBlock = '';
+      let accountWithCredentials = accountBlock;
+      if (credentials) {
+        const block = credentialsEmailBlock(credentials, { username: credentials.username, password: credentials.password });
+        const tpl = await getTemplateBySlug('interview-scheduled-candidate');
+        const hasSlot = (tpl.html || '').includes('credentialsBlock') || JSON.stringify(tpl.design || '').includes('credentialsBlock');
+        if (hasSlot) credentialsBlock = block; else accountWithCredentials = block + accountBlock;
+      }
       await sendTemplatedMail({
         templateSlug: 'interview-scheduled-candidate',
         to: share.candidate.email,
         subjectOverride: `Interview Scheduled — ${share.job.title} at ${share.client.companyName}`,
         data: {
           candidateName, jobTitle: share.job.title, companyName: share.client.companyName,
-          whenFormatted: when, modeLabel, meetingOrLocationBlock, notesBlock, accountBlock,
+          whenFormatted: when, modeLabel, meetingOrLocationBlock, notesBlock,
+          accountBlock: accountWithCredentials, credentialsBlock,
         },
       });
+      if (credentials) await prisma.interviewCredential.update({ where: { interviewId: interview.id }, data: { emailedAt: new Date() } });
     } catch (mailErr) {
       candidateEmailSent = false;
       console.error('schedule-interview: candidate email failed', mailErr);
@@ -880,8 +902,17 @@ export const scheduleInterview = handler<{ id: string }>(async (req, { params })
       console.error('schedule-interview: interviewer email(s) failed:', interviewerFailures.join(', '));
     }
 
+    if (credentials) {
+      await prisma.auditLog.create({
+        data: { userId: user.id, action: 'SET_INTERVIEW_CREDENTIALS', module: 'interviews', recordId: interview.id,
+          newData: { expiresAt: credentials.expiresAt.toISOString(), label: credentials.label || null, emailed: candidateEmailSent } },
+      }).catch(() => {});
+    }
+
     return json({
       interview,
+      credentialsSet: !!credentials,
+      credentialsEmailed: !!credentials && candidateEmailSent,
       accountCreated: isNewAccount,
       interviewersNotified: interviewerEmailList.length - interviewerFailures.length,
       interviewerFailures,
@@ -894,6 +925,7 @@ export const scheduleInterview = handler<{ id: string }>(async (req, { params })
       }),
     }, 201);
   } catch (err: any) {
+    if (err instanceof HttpError) return json({ error: err.message }, err.status);
     console.error(err);
     return json({ error: err.message }, 400);
   }

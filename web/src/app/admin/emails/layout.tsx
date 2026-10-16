@@ -8,6 +8,7 @@ const TABS = [
   { label: 'Compose',   href: '/admin/emails' },
   { label: 'Campaigns', href: '/admin/emails/campaigns' },
   { label: 'Templates', href: '/admin/emails/templates' },
+  { label: 'Brand & theme', href: '/admin/emails/theme' },
   { label: 'Groups',    href: '/admin/emails/groups' },
   { label: 'History',   href: '/admin/emails/history' },
 ];

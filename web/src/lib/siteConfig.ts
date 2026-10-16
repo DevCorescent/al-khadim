@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import axios from 'axios';
+import { fontsHref, themeVars, type HomeTheme } from './homepage/config';
 
 const API = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -20,6 +21,7 @@ export interface SiteConfigState {
   hero:     any;
   sections: any;
   footer:   any;
+  homepage: any;
   loaded:   boolean;
   fetchConfig: () => Promise<void>;
   updateSection: (key: string, value: any, token: string) => Promise<void>;
@@ -27,13 +29,14 @@ export interface SiteConfigState {
 }
 
 export const useSiteConfig = create<SiteConfigState>((set, get) => ({
-  theme: null, navbar: null, hero: null, sections: null, footer: null, loaded: false,
+  theme: null, navbar: null, hero: null, sections: null, footer: null, homepage: null, loaded: false,
 
   fetchConfig: async () => {
     try {
       const { data } = await axios.get(`${API}/api/site-config`);
       set({ ...data, loaded: true });
       applyTheme(data.theme);
+      applyWebsiteTheme(data.homepage?.theme);
     } catch (e) {
       set({ loaded: true });
     }
@@ -45,6 +48,7 @@ export const useSiteConfig = create<SiteConfigState>((set, get) => ({
     });
     set({ [key]: data });
     if (key === 'theme') applyTheme(data);
+    if (key === 'homepage') applyWebsiteTheme(data?.theme);
   },
 
   uploadImage: async (file, token) => {
@@ -73,4 +77,24 @@ export function applyTheme(theme: any) {
   if (theme.footerText)  root.style.setProperty('--color-footer-text', theme.footerText);
   if (theme.btnRadius)   root.style.setProperty('--radius-btn', theme.btnRadius);
   if (theme.cardRadius)  root.style.setProperty('--radius-card', theme.cardRadius);
+}
+
+/**
+ * Applies the Website Builder theme (hp-* colours, fonts, radii) to the whole
+ * document, so the shared header and footer match the homepage on every page.
+ * The homepage itself also sets these on its own wrapper from the server render.
+ */
+export function applyWebsiteTheme(theme?: HomeTheme | null) {
+  if (!theme || typeof document === 'undefined') return;
+  const root = document.documentElement;
+  for (const [k, v] of Object.entries(themeVars(theme))) root.style.setProperty(k, v);
+  const href = fontsHref(theme);
+  let link = document.getElementById('hp-fonts') as HTMLLinkElement | null;
+  if (!link) {
+    link = document.createElement('link');
+    link.id = 'hp-fonts';
+    link.rel = 'stylesheet';
+    document.head.appendChild(link);
+  }
+  if (link.href !== href) link.href = href;
 }

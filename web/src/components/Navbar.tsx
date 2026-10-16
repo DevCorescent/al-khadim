@@ -1,322 +1,345 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Search, X, Briefcase, Users, Menu, ShieldCheck, ChevronDown } from 'lucide-react';
+import {
+  ArrowRight, ChevronDown, Clock, Facebook, Instagram, Linkedin, Mail, Menu, MessageCircle, Phone, Search, Twitter, X, Youtube,
+} from 'lucide-react';
 import { useSiteConfig } from '@/lib/siteConfig';
+import { normalizeFooter, normalizeNavbar, safeHref } from '@/lib/homepage/config';
+import { mediaUrl } from '@/lib/mediaUrl';
+import { Icon } from '@/components/homepage/icons';
 
-const DEFAULT_LINKS = [
-  { label: 'Find Talent', href: '/services' },
-  { label: 'Find Work',   href: '/careers' },
-  { label: 'Candidates',  href: '/candidates' },
-  { label: 'About',       href: '/about' },
-  { label: 'Contact',     href: '/contact' },
-];
-
-const suggestions = {
-  work: ['Software Engineer', 'HR Manager', 'Civil Engineer', 'Financial Analyst', 'Project Manager'],
-  hire: ['Executive Search', 'Bulk Hiring', 'Contract Staffing', 'Visa Assistance', 'Recruitment'],
+export const SOCIAL_ICONS: Record<string, any> = {
+  linkedin: Linkedin, instagram: Instagram, twitter: Twitter, facebook: Facebook, youtube: Youtube, whatsapp: MessageCircle,
 };
 
-const LOGIN_OPTIONS = [
-  { label: 'Candidate',  href: '/candidate/login', icon: Briefcase },
-  { label: 'Company',    href: '/company/login',   icon: Users },
-  { label: 'Staff / Admin', href: '/login',         icon: ShieldCheck },
-];
+export function socialEntries(footer: any): [string, string][] {
+  return Object.entries(footer?.socials || {})
+    .filter(([k, url]) => SOCIAL_ICONS[k] && safeHref(url as string)) as [string, string][];
+}
 
-export default function Navbar() {
-  const [scrolled,   setScrolled]   = useState(false);
+/** The shipped Al Khadim badge; an uploaded logo in the Website Builder replaces the whole mark. */
+export const DEFAULT_LOGO = '/brand/al-khadim-logo.png';
+
+/** Logo badge with the company name beside it — or the uploaded logo for the current background. */
+export function BrandMark({ nav, onDark }: { nav: any; onDark: boolean }) {
+  const custom = mediaUrl(onDark ? (nav.logoImageOnDark || nav.logoImage) : nav.logoImage);
+  if (custom) return <img src={custom} alt={nav.logoText || 'Logo'} className="h-10 lg:h-11 w-auto object-contain" />;
+  const sub = String(nav.logoSubtitle || '').trim();
+  return (
+    <span className="flex items-center gap-2.5 lg:gap-3">
+      <img src={DEFAULT_LOGO} alt="" width={44} height={44}
+        className={`w-10 h-10 lg:w-11 lg:h-11 rounded-full shrink-0 ${onDark ? 'ring-1 ring-white/25 shadow-lg shadow-black/30' : 'shadow-md shadow-primary-900/20'}`} />
+      <span className="leading-none">
+        <span className={`flex items-baseline gap-1 hp-heading text-[16px] lg:text-[17px] font-bold tracking-[-0.01em] whitespace-nowrap ${onDark ? 'text-white' : 'text-hp-text'}`}>
+          {nav.logoText}
+          {nav.tagline && String(nav.tagline).length <= 8 && <span className="text-[10px] font-bold tracking-[0.16em] uppercase text-hp-gold">{nav.tagline}</span>}
+        </span>
+        {sub && <span className={`hidden sm:block mt-1 text-[9px] font-semibold tracking-[0.16em] uppercase whitespace-nowrap ${onDark ? 'text-white/55' : 'text-hp-muted'}`}>{sub}</span>}
+      </span>
+    </span>
+  );
+}
+
+type NavLink = { label: string; href: string; children?: { label: string; href: string }[] };
+
+/** Desktop menu links; a link with children opens its dropdown on hover or keyboard focus. */
+function DesktopLinks({ links, onDark, isActive, className = '' }: {
+  links: NavLink[]; onDark: boolean; isActive: (href: string) => boolean; className?: string;
+}) {
+  return (
+    <ul className={`flex items-center ${className}`}>
+      {links.map(l => {
+        const kids = (l.children || []).filter(c => c?.label && safeHref(c.href));
+        const active = isActive(l.href) || kids.some(c => isActive(c.href));
+        return (
+          <li key={`${l.href}-${l.label}`} className="relative group">
+            <Link href={safeHref(l.href)} aria-haspopup={kids.length ? 'true' : undefined}
+              className={`relative flex items-center gap-0.5 px-2.5 2xl:px-3 py-2 text-[13.5px] font-medium whitespace-nowrap transition-colors ${onDark
+                ? active ? 'text-white' : 'text-white/75 hover:text-white'
+                : active ? 'text-hp-primary' : 'text-hp-text/80 hover:text-hp-primary'}`}>
+              {l.label}
+              {kids.length > 0 && <ChevronDown size={13} className="opacity-60 transition-transform group-hover:rotate-180 group-focus-within:rotate-180" />}
+              <span className={`absolute left-2.5 right-2.5 -bottom-0.5 h-[2px] rounded-full bg-hp-gold transition-transform origin-left ${active ? 'scale-x-100' : 'scale-x-0'}`} />
+            </Link>
+            {kids.length > 0 && (
+              <div className="invisible opacity-0 translate-y-1 group-hover:visible group-hover:opacity-100 group-hover:translate-y-0 group-focus-within:visible group-focus-within:opacity-100 group-focus-within:translate-y-0 transition-all duration-150 absolute left-0 top-full pt-2 z-50">
+                <div className="min-w-[230px] bg-white rounded-hp-card shadow-2xl ring-1 ring-black/5 p-2 border-t-2 border-hp-gold">
+                  {kids.map(c => (
+                    <Link key={`${c.href}-${c.label}`} href={safeHref(c.href)}
+                      className={`flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg text-[13.5px] font-medium transition-colors ${isActive(c.href) ? 'text-hp-primary bg-hp-sand' : 'text-hp-text hover:bg-hp-sand hover:text-hp-primary'}`}>
+                      {c.label} <ArrowRight size={13} className="opacity-40" />
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function LoginMenu({ nav, onDark, links, small = false }: { nav: any; onDark: boolean; links: any[]; small?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [open]);
+  if (!nav.showLogin || !links.length) return null;
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open}
+        className={small
+          ? 'flex items-center gap-1 h-full text-[12px] font-medium text-white/75 hover:text-hp-gold whitespace-nowrap transition-colors'
+          : `flex items-center gap-1 px-3 py-2 rounded-full text-[13.5px] font-medium whitespace-nowrap transition-colors ${onDark ? 'text-white hover:bg-white/10' : 'text-hp-text hover:bg-hp-text/5'}`}>
+        {nav.loginLabel || 'Log in'} <ChevronDown size={small ? 12 : 14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-60 bg-white rounded-hp-card shadow-2xl ring-1 ring-black/5 p-2 z-50" style={{ animation: 'hpFadeUp .16s ease both' }}>
+          {links.map((l: any) => (
+            <Link key={l.href} href={safeHref(l.href)} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-hp-text hover:bg-hp-sand transition-colors">
+              <span className="grid place-items-center w-8 h-8 rounded-lg bg-hp-primary/10 text-hp-primary"><Icon name={l.icon} fallback="UserCheck" size={15} /></span>
+              {l.label}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Job search from the header: submits to the careers page. */
+function HeaderSearch({ placeholder, onClose }: { placeholder: string; onClose: () => void }) {
+  const [q, setQ] = useState('');
+  const router = useRouter();
+  return (
+    <form onSubmit={e => { e.preventDefault(); router.push(q.trim() ? `/careers?q=${encodeURIComponent(q.trim())}` : '/careers'); onClose(); }}
+      className="flex items-center gap-2 bg-white rounded-full ring-1 ring-hp-gold/50 shadow-xl pl-4 pr-1.5 py-1.5 w-[min(420px,80vw)]"
+      style={{ animation: 'hpFadeUp .16s ease both' }}>
+      <Search size={16} className="text-hp-muted shrink-0" />
+      <input autoFocus value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Escape' && onClose()}
+        placeholder={placeholder} className="flex-1 min-w-0 bg-transparent text-sm text-hp-text focus:outline-none py-1.5" />
+      <button type="submit" className="px-4 py-2 rounded-full bg-hp-primary text-white text-xs font-semibold hover:bg-hp-primary-dark">Search</button>
+      <button type="button" onClick={onClose} aria-label="Close search" className="grid place-items-center w-8 h-8 rounded-full text-hp-muted hover:bg-hp-sand"><X size={15} /></button>
+    </form>
+  );
+}
+
+/**
+ * Site header: one slim bar, plus — on the homepage, from tablets up — a thin
+ * dark utility strip above it (tagline, phone, log-in, language) that slides
+ * away once the visitor scrolls. The homepage passes its server-loaded config
+ * (and, in the builder preview, the unsaved draft); other pages read the store.
+ */
+export default function Navbar({ config, footerConfig, overDarkHero, flagStripe }: {
+  config?: any; footerConfig?: any; overDarkHero?: boolean; flagStripe?: boolean;
+} = {}) {
+  const storeNav = useSiteConfig(s => s.navbar);
+  const storeHome = useSiteConfig(s => s.homepage);
+  const showStripe = flagStripe ?? storeHome?.theme?.flagStripe ?? true;
+  const storeFooter = useSiteConfig(s => s.footer);
+  const nav = normalizeNavbar(config ?? storeNav);
+  const footer = normalizeFooter(footerConfig ?? storeFooter);
+  const pathname = usePathname() || '/';
+
+  const [scrolled, setScrolled] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileGroup, setMobileGroup] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [searchMode, setSearchMode] = useState<'work' | 'hire'>('work');
-  const [query,      setQuery]      = useState('');
-  const [mobileMenu, setMobileMenu] = useState(false);
-  const [loginMenuOpen, setLoginMenuOpen] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const router   = useRouter();
-  const pathname = usePathname();
-  const navbar   = useSiteConfig(s => s.navbar);
-
-  const links    = navbar?.links    || DEFAULT_LINKS;
-  const ctaLabel = navbar?.ctaLabel || 'Get Started';
-  const ctaHref  = navbar?.ctaHref  || '/enquiry';
-  const logoText = navbar?.logoText || 'Al Khadim';
-  const tagline  = navbar?.tagline  || 'LLC';
-  const logoImg  = navbar?.logoImage;
 
   useEffect(() => {
-    const fn = () => setScrolled(window.scrollY > 16);
+    const fn = () => setScrolled(window.scrollY > 24);
+    fn();
     window.addEventListener('scroll', fn, { passive: true });
     return () => window.removeEventListener('scroll', fn);
   }, []);
-
+  useEffect(() => { setMobileOpen(false); setSearchOpen(false); }, [pathname]);
   useEffect(() => {
-    if (searchOpen) setTimeout(() => inputRef.current?.focus(), 80);
-  }, [searchOpen]);
+    document.body.style.overflow = mobileOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [mobileOpen]);
 
-  useEffect(() => { setMobileMenu(false); setSearchOpen(false); setLoginMenuOpen(false); }, [pathname]);
-
-  function closeSearch() { setSearchOpen(false); setQuery(''); }
-
-  function submit(q?: string) {
-    const val = (q ?? query).trim();
-    router.push(searchMode === 'work'
-      ? (val ? `/careers?q=${encodeURIComponent(val)}` : '/careers')
-      : (val ? `/enquiry?service=${encodeURIComponent(val)}` : '/enquiry'));
-    closeSearch();
-  }
-
-  const filtered = suggestions[searchMode].filter(s =>
-    !query || s.toLowerCase().includes(query.toLowerCase())
-  );
-
-  /* ─── pill appearance ─── */
-  const pill: React.CSSProperties = {
-    background:          scrolled ? 'rgba(8,8,14,0.88)' : 'rgba(8,8,14,0.62)',
-    backdropFilter:      'blur(24px) saturate(180%)',
-    WebkitBackdropFilter:'blur(24px) saturate(180%)',
-    border:              '1px solid rgba(255,255,255,0.09)',
-    boxShadow:           scrolled
-      ? '0 12px 40px rgba(0,0,0,0.32), 0 1px 0 rgba(255,255,255,0.06) inset'
-      : '0 4px 24px rgba(0,0,0,0.16), 0 1px 0 rgba(255,255,255,0.06) inset',
-    transition:          'background 0.3s ease, box-shadow 0.3s ease',
+  const home = pathname === '/';
+  const strip = home && nav.topBarEnabled;
+  const transparent = !!overDarkHero && nav.transparentOnHero && !scrolled && !mobileOpen;
+  const onDark = transparent;
+  const socials = nav.topBarSocials ? socialEntries(footer) : [];
+  const links: NavLink[] = (nav.links || []).filter((l: any) => l?.label && safeHref(l.href));
+  const loginLinks = (nav.loginLinks || []).filter((l: any) => l?.label && safeHref(l.href));
+  const isActive = (href: string) => {
+    const h = safeHref(href);
+    if (!h || h.includes('#') || h.includes('?')) return false;
+    return h === '/' ? pathname === '/' : pathname === h || pathname.startsWith(h + '/');
   };
-
-  /* ─── shared hover helpers ─── */
-  const hoverIn  = (e: React.MouseEvent) => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(255,255,255,0.07)'; el.style.color = '#fff'; };
-  const hoverOut = (e: React.MouseEvent, active = false) => { const el = e.currentTarget as HTMLElement; el.style.background = active ? 'rgba(255,255,255,0.1)' : 'transparent'; el.style.color = active ? '#fff' : 'rgba(255,255,255,0.55)'; };
+  const phone = nav.expertPhone || nav.topBarPhone;
+  const cta = nav.ctaLabel && safeHref(nav.ctaHref);
+  const lang = nav.langLabel && safeHref(nav.langHref);
+  const stripText = String(nav.headerTagline || nav.topBarText || '').replace(/\s*\n\s*/g, ' ');
+  const tel = (p: string) => `tel:${String(p).replace(/\s/g, '')}`;
 
   return (
-    <>
-      {/* ─────────────── DESKTOP ─────────────── */}
-      <nav className="hidden lg:block fixed top-0 inset-x-0 z-50 pointer-events-none"
-        style={{ paddingTop: 20, paddingLeft: 24, paddingRight: 24 }}>
-        <div className="max-w-[1100px] mx-auto pointer-events-auto">
-          <div className="flex items-center gap-2 rounded-[20px] px-3 py-2" style={pill}>
+    <header className={`fixed top-0 inset-x-0 z-50 transition-transform duration-300 ${strip && scrolled ? 'md:-translate-y-9' : ''}`}>
+      {/* Utility strip */}
+      {strip && (
+        <div className={`hidden md:block relative z-20 h-9 text-white/70 text-[12px] backdrop-blur-xl backdrop-saturate-150 border-b border-white/[0.06] transition-colors duration-300 ${transparent ? 'bg-hp-ink/55' : 'bg-hp-ink/90'}`}>
+          <div className="max-w-[1360px] mx-auto h-full px-5 sm:px-8 lg:px-10 flex items-center gap-6">
+            <p className="truncate flex items-center gap-2">
+              <span aria-hidden className="inline-flex h-2.5 w-4 rounded-[2px] overflow-hidden shrink-0">
+                <span className="w-1 bg-[#C8102E]" /><span className="flex-1 flex flex-col"><span className="flex-1 bg-[#00732F]" /><span className="flex-1 bg-white" /><span className="flex-1 bg-black" /></span>
+              </span>
+              {stripText}
+            </p>
+            <div className="ml-auto flex items-center gap-5 h-full shrink-0">
+              {nav.topBarHours && <span className="hidden 2xl:flex items-center gap-1.5"><Clock size={12} /> {nav.topBarHours}</span>}
+              {nav.topBarEmail && <a href={`mailto:${nav.topBarEmail}`} className="hidden xl:flex items-center gap-1.5 hover:text-hp-gold transition-colors"><Mail size={12} /> {nav.topBarEmail}</a>}
+              {phone && (
+                <a href={tel(phone)} className="flex items-center gap-1.5 hover:text-hp-gold transition-colors">
+                  <Phone size={12} className="text-hp-gold" />
+                  <span className="hidden lg:inline text-white/50">{nav.expertLabel || 'Talk to our experts'}</span>
+                  <span className="font-semibold text-white">{phone}</span>
+                </a>
+              )}
+              {socials.length > 0 && (
+                <span className="hidden lg:flex items-center gap-3">
+                  {socials.map(([k, url]) => { const I = SOCIAL_ICONS[k]; return <a key={k} href={safeHref(url)} target="_blank" rel="noopener noreferrer" aria-label={k} className="hover:text-hp-gold transition-colors"><I size={13} /></a>; })}
+                </span>
+              )}
+              {lang && (
+                <span className="flex items-center gap-2 pl-5 border-l border-white/15">
+                  <span className="text-white font-semibold">EN</span>
+                  <a href={safeHref(nav.langHref)} lang="ar" className="hp-arabic hover:text-hp-gold">{nav.langLabel}</a>
+                </span>
+              )}
+              {nav.showLogin && loginLinks.length > 0 && (
+                <span className="h-full flex items-center pl-5 border-l border-white/15"><LoginMenu nav={nav} onDark links={loginLinks} small /></span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
-            {/* ── Logo ── */}
-            <Link href="/" className="flex items-center gap-2.5 shrink-0 pr-1">
-              {logoImg
-                ? <img src={logoImg} alt={logoText} className="h-8 w-auto object-contain brightness-0 invert"/>
-                : <>
-                    <div className="w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0"
-                      style={{background:'#2563EB',boxShadow:'0 2px 12px rgba(37,99,235,0.5)'}}>
-                      <span className="text-white font-black text-[11px] tracking-tight">AK</span>
-                    </div>
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="text-white font-bold text-[15px] tracking-tight leading-none">{logoText}</span>
-                      <span className="text-[9px] font-bold tracking-widest uppercase px-1.5 py-0.5 rounded-md leading-none"
-                        style={{background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.4)'}}>{tagline}</span>
-                    </div>
-                  </>
-              }
-            </Link>
+      {/* Main bar */}
+      <div className={`relative z-10 backdrop-blur-xl backdrop-saturate-150 transition-[background-color,box-shadow,border-color] duration-500 border-b ${transparent
+        ? 'bg-gradient-to-b from-hp-ink/45 to-hp-ink/15 border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]'
+        : 'bg-white/75 border-hp-text/[0.06] shadow-[0_10px_30px_-18px_rgba(6,30,38,0.28)]'}`}>
+        <div className="max-w-[1360px] mx-auto px-5 sm:px-8 lg:px-10 h-16 lg:h-[72px] flex items-center gap-4">
+          <Link href="/" className="shrink-0" aria-label={`${nav.logoText} home`}>
+            <BrandMark nav={nav} onDark={onDark} />
+          </Link>
+          <nav aria-label="Main" className="hidden xl:block mx-auto">
+            <DesktopLinks links={links} onDark={onDark} isActive={isActive} />
+          </nav>
+          <div className="ml-auto xl:ml-0 flex items-center gap-1.5">
+            {nav.showSearch && (
+              <div className="hidden sm:block relative">
+                <button type="button" onClick={() => setSearchOpen(v => !v)} aria-label="Search jobs" aria-expanded={searchOpen}
+                  className={`grid place-items-center w-9 h-9 rounded-full transition-colors ${onDark ? 'text-white hover:bg-white/10' : 'text-hp-text/80 hover:bg-hp-sand hover:text-hp-text'}`}><Search size={16} /></button>
+                {searchOpen && (
+                  <div className="absolute right-0 top-full mt-3"><HeaderSearch placeholder={nav.searchPlaceholder || 'Search jobs…'} onClose={() => setSearchOpen(false)} /></div>
+                )}
+              </div>
+            )}
+            {!strip && <div className="hidden xl:block"><LoginMenu nav={nav} onDark={onDark} links={loginLinks} /></div>}
+            {cta && (
+              <Link href={safeHref(nav.ctaHref)}
+                className="group hidden sm:inline-flex items-center gap-1.5 ml-1 pl-4 pr-3.5 h-9 rounded-full text-[13px] font-semibold whitespace-nowrap bg-hp-gold text-hp-ink hover:brightness-105 shadow-sm shadow-hp-gold/30 transition">
+                {nav.ctaLabel} <ArrowRight size={14} className="transition-transform group-hover:translate-x-0.5" />
+              </Link>
+            )}
+            <button type="button" onClick={() => setMobileOpen(v => !v)} aria-label={mobileOpen ? 'Close menu' : 'Open menu'} aria-expanded={mobileOpen}
+              className={`xl:hidden grid place-items-center w-10 h-10 rounded-full transition-colors ${onDark ? 'text-white bg-white/10' : 'text-hp-text bg-hp-sand'}`}>
+              {mobileOpen ? <X size={18} /> : <Menu size={18} />}
+            </button>
+          </div>
+        </div>
+        {!transparent && showStripe && <div aria-hidden className="hp-flag-stripe h-[3px]" />}
+        {/* Fade-blur: the glass melts into the page instead of ending in a hard edge. */}
+        {!mobileOpen && (
+          <div aria-hidden className={`absolute inset-x-0 top-full h-8 pointer-events-none backdrop-blur-[6px] [mask-image:linear-gradient(to_bottom,black,transparent)] [-webkit-mask-image:linear-gradient(to_bottom,black,transparent)] transition-colors duration-500 ${transparent ? 'bg-gradient-to-b from-hp-ink/15 to-transparent' : 'bg-gradient-to-b from-white/40 to-transparent'}`} />
+        )}
 
-            {/* ── Divider ── */}
-            <div className="w-px self-stretch my-2 shrink-0" style={{background:'rgba(255,255,255,0.09)'}}/>
-
-            {/* ── Nav links (hidden when search open) ── */}
-            {!searchOpen && (
-              <div className="flex items-center gap-0.5 flex-1 min-w-0">
-                {links.map((link: any) => {
-                  const active = pathname === link.href || (link.href !== '/' && pathname.startsWith(link.href + '/'));
+        {/* Menu for phones, tablets and small laptops */}
+        {mobileOpen && (
+          <div className="xl:hidden absolute inset-x-0 top-full h-[calc(100dvh-100%)] bg-white overflow-y-auto border-t border-hp-text/5" style={{ animation: 'hpFadeUp .2s ease both' }}>
+            <div className="max-w-2xl mx-auto">
+              {nav.showSearch && (
+                <form className="px-5 pt-5" onSubmit={e => {
+                  e.preventDefault();
+                  const q = String(new FormData(e.currentTarget).get('q') || '').trim();
+                  window.location.href = q ? `/careers?q=${encodeURIComponent(q)}` : '/careers';
+                }}>
+                  <div className="flex items-center gap-2 rounded-full bg-hp-sand px-4">
+                    <Search size={15} className="text-hp-muted" />
+                    <input name="q" placeholder={nav.searchPlaceholder || 'Search jobs…'} className="flex-1 bg-transparent py-3 text-[15px] focus:outline-none" />
+                  </div>
+                </form>
+              )}
+              <div className="px-3 py-3">
+                {links.map(l => {
+                  const kids = (l.children || []).filter(c => c?.label && safeHref(c.href));
+                  const key = `${l.href}-${l.label}`;
+                  const open = mobileGroup === key;
+                  if (!kids.length) {
+                    return (
+                      <Link key={key} href={safeHref(l.href)}
+                        className={`flex items-center px-4 py-3 rounded-xl text-[15px] font-medium border-b border-hp-text/[0.05] ${isActive(l.href) ? 'text-hp-primary' : 'text-hp-text'}`}>
+                        {l.label}
+                      </Link>
+                    );
+                  }
                   return (
-                    <Link key={link.href} href={link.href}
-                      className="text-[13px] font-medium px-3 py-2 rounded-xl whitespace-nowrap transition-none"
-                      style={{color: active ? '#fff' : 'rgba(255,255,255,0.55)', background: active ? 'rgba(255,255,255,0.1)' : 'transparent'}}
-                      onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLElement).style.color='rgba(255,255,255,0.9)'; (e.currentTarget as HTMLElement).style.background='rgba(255,255,255,0.07)'; }}}
-                      onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.color='rgba(255,255,255,0.55)'; (e.currentTarget as HTMLElement).style.background='transparent'; }}}>
-                      {link.label}
-                    </Link>
+                    <div key={key} className="border-b border-hp-text/[0.05]">
+                      <button type="button" onClick={() => setMobileGroup(open ? null : key)} aria-expanded={open}
+                        className="w-full flex items-center justify-between px-4 py-3 text-[15px] font-medium text-hp-text">
+                        {l.label} <ChevronDown size={16} className={`text-hp-muted transition-transform ${open ? 'rotate-180' : ''}`} />
+                      </button>
+                      {open && (
+                        <div className="pb-2 pl-4">
+                          {[{ label: `All ${l.label.toLowerCase()}`, href: l.href }, ...kids].map(c => (
+                            <Link key={`${c.href}-${c.label}`} href={safeHref(c.href)} className="flex items-center justify-between px-4 py-2 rounded-lg text-[14px] text-hp-muted hover:text-hp-primary">
+                              {c.label} <ArrowRight size={13} className="text-hp-gold" />
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>
-            )}
-
-            {/* ── Search expanded ── */}
-            {searchOpen && (
-              <div className="flex items-center gap-2 flex-1 min-w-0 relative">
-                {/* Mode toggle */}
-                <div className="flex shrink-0 rounded-xl overflow-hidden text-[11px] font-bold"
-                  style={{border:'1px solid rgba(255,255,255,0.1)'}}>
-                  {(['work','hire'] as const).map(m => (
-                    <button key={m} onClick={() => setSearchMode(m)}
-                      className="flex items-center gap-1.5 px-3 py-2 transition-colors"
-                      style={{background: searchMode===m ? '#2563EB' : 'transparent', color: searchMode===m ? '#fff' : 'rgba(255,255,255,0.45)', borderLeft: m==='hire' ? '1px solid rgba(255,255,255,0.08)' : 'none'}}>
-                      {m==='work' ? <Briefcase size={10}/> : <Users size={10}/>}
-                      {m==='work' ? 'Jobs' : 'Talent'}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Input */}
-                <div className="flex-1 relative">
-                  <div className="flex items-center rounded-xl overflow-hidden"
-                    style={{border:'1px solid rgba(255,255,255,0.15)',background:'rgba(255,255,255,0.07)'}}>
-                    <Search size={13} className="ml-3 shrink-0" style={{color:'rgba(255,255,255,0.35)'}}/>
-                    <input ref={inputRef} type="text" value={query} onChange={e => setQuery(e.target.value)}
-                      onKeyDown={e => { if (e.key==='Escape') closeSearch(); if (e.key==='Enter') submit(); }}
-                      placeholder={searchMode==='work' ? 'Search roles, skills…' : 'Search services…'}
-                      className="flex-1 px-2.5 py-2.5 text-[13px] bg-transparent focus:outline-none text-white"
-                      style={{'--tw-placeholder-color':'rgba(255,255,255,0.28)'} as any}
-                      autoComplete="off"/>
-                    {query && <button onClick={() => setQuery('')} className="px-2 py-1" style={{color:'rgba(255,255,255,0.35)'}}><X size={11}/></button>}
-                    <button onClick={() => submit()}
-                      className="text-white text-[11px] font-bold px-4 py-2.5 shrink-0 transition-opacity hover:opacity-90"
-                      style={{background:'#2563EB'}}>
-                      Search
-                    </button>
-                  </div>
-
-                  {/* Suggestions dropdown */}
-                  {filtered.length > 0 && (
-                    <div className="absolute top-[calc(100%+8px)] left-0 right-0 rounded-2xl overflow-hidden z-[60] py-1"
-                      style={{background:'rgba(10,10,18,0.97)',border:'1px solid rgba(255,255,255,0.09)',boxShadow:'0 20px 60px rgba(0,0,0,0.55)'}}>
-                      {filtered.map(s => (
-                        <button key={s} onMouseDown={() => submit(s)}
-                          className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-[13px]"
-                          style={{color:'rgba(255,255,255,0.6)'}}
-                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background='rgba(255,255,255,0.05)'; (e.currentTarget as HTMLElement).style.color='#fff'; }}
-                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background='transparent'; (e.currentTarget as HTMLElement).style.color='rgba(255,255,255,0.6)'; }}>
-                          <Search size={11} className="shrink-0" style={{color:'rgba(255,255,255,0.25)'}}/>{s}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <button onClick={closeSearch}
-                  className="shrink-0 w-8 h-8 flex items-center justify-center rounded-xl"
-                  style={{color:'rgba(255,255,255,0.4)'}}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background='rgba(255,255,255,0.07)'; (e.currentTarget as HTMLElement).style.color='#fff'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background='transparent'; (e.currentTarget as HTMLElement).style.color='rgba(255,255,255,0.4)'; }}>
-                  <X size={14}/>
-                </button>
-              </div>
-            )}
-
-            {/* ── Right actions ── */}
-            <div className="flex items-center gap-1 shrink-0 pl-1">
-              {!searchOpen && (
-                <button onClick={() => setSearchOpen(true)} aria-label="Search"
-                  className="w-9 h-9 flex items-center justify-center rounded-xl"
-                  style={{color:'rgba(255,255,255,0.45)'}}
-                  onMouseEnter={hoverIn} onMouseLeave={e => hoverOut(e)}>
-                  <Search size={16}/>
-                </button>
-              )}
-
-              <div className="w-px h-5 mx-0.5 shrink-0" style={{background:'rgba(255,255,255,0.09)'}}/>
-
-              <div className="relative">
-                <button onClick={() => setLoginMenuOpen(v => !v)}
-                  className="flex items-center gap-1 text-[13px] font-semibold px-3.5 py-2 rounded-xl"
-                  style={{color:'rgba(255,255,255,0.55)', background: loginMenuOpen ? 'rgba(255,255,255,0.1)' : 'transparent'}}
-                  onMouseEnter={hoverIn} onMouseLeave={e => hoverOut(e, loginMenuOpen)}>
-                  Log in <ChevronDown size={13} style={{transform: loginMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease'}} />
-                </button>
-
-                {loginMenuOpen && (
-                  <div className="absolute top-[calc(100%+8px)] right-0 w-48 rounded-2xl overflow-hidden py-1 z-[60]"
-                    style={{background:'rgba(10,10,18,0.97)',border:'1px solid rgba(255,255,255,0.09)',boxShadow:'0 20px 60px rgba(0,0,0,0.55)'}}>
-                    {LOGIN_OPTIONS.map(({ label, href, icon: Icon }) => (
-                      <Link key={href} href={href}
-                        className="flex items-center gap-2.5 px-4 py-2.5 text-[13px] font-medium"
-                        style={{color:'rgba(255,255,255,0.65)'}}
-                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background='rgba(255,255,255,0.06)'; (e.currentTarget as HTMLElement).style.color='#fff'; }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background='transparent'; (e.currentTarget as HTMLElement).style.color='rgba(255,255,255,0.65)'; }}>
-                        <Icon size={13} className="shrink-0" style={{color:'rgba(255,255,255,0.35)'}} />
-                        {label}
+              {nav.showLogin && loginLinks.length > 0 && (
+                <div className="px-5 pb-5">
+                  <p className="px-2 pb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-hp-muted">{nav.loginLabel || 'Log in'}</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {loginLinks.map((l: any) => (
+                      <Link key={l.href} href={safeHref(l.href)} className="flex flex-col items-center gap-1.5 px-2 py-3 rounded-xl bg-hp-sand/70 text-[12px] font-semibold text-hp-text text-center">
+                        <Icon name={l.icon} fallback="UserCheck" size={17} className="text-hp-primary" />
+                        {l.label}
                       </Link>
                     ))}
                   </div>
-                )}
-              </div>
-
-              <Link href={ctaHref}
-                className="text-[13px] font-bold px-4 py-2 rounded-xl text-white ml-1"
-                style={{
-                  background:'#2563EB',
-                  boxShadow:'0 2px 14px rgba(37,99,235,0.45)',
-                }}>
-                {ctaLabel}
-              </Link>
+                </div>
+              )}
+              {cta && (
+                <div className="px-5 pb-5">
+                  <Link href={safeHref(nav.ctaHref)} className="flex justify-center w-full px-5 py-3.5 rounded-full bg-hp-gold text-hp-ink text-[15px] font-semibold">{nav.ctaLabel}</Link>
+                </div>
+              )}
+              {phone && (
+                <a href={tel(phone)} className="mx-5 mb-24 flex items-center gap-3 p-4 rounded-hp-card bg-hp-ink text-white">
+                  <span className="grid place-items-center w-9 h-9 rounded-full ring-1 ring-hp-gold/60 text-hp-gold"><Phone size={15} /></span>
+                  <span><span className="block text-[11px] text-white/60">{nav.expertLabel || 'Talk to our experts'}</span><span className="text-[15px] font-semibold">{phone}</span></span>
+                </a>
+              )}
             </div>
           </div>
-        </div>
-      </nav>
-
-      {/* ─────────────── MOBILE ─────────────── */}
-      <nav className="lg:hidden fixed top-0 inset-x-0 z-50 pointer-events-none"
-        style={{ paddingTop: 12, paddingLeft: 12, paddingRight: 12 }}>
-        <div className="pointer-events-auto">
-
-          {/* Top bar */}
-          <div className="flex items-center gap-3 rounded-[18px] px-3 py-2.5" style={pill}>
-            <Link href="/" className="flex items-center gap-2 flex-1 min-w-0">
-              <div className="w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0"
-                style={{background:'#2563EB',boxShadow:'0 2px 10px rgba(37,99,235,0.45)'}}>
-                <span className="text-white font-black text-[11px]">AK</span>
-              </div>
-              <span className="text-white font-bold text-[15px] tracking-tight">{logoText}</span>
-            </Link>
-
-            <Link href={ctaHref}
-              className="text-[12px] font-bold px-3.5 py-2 rounded-xl text-white shrink-0"
-              style={{background:'#2563EB',boxShadow:'0 2px 10px rgba(37,99,235,0.4)'}}>
-              {ctaLabel}
-            </Link>
-            <button onClick={() => setMobileMenu(v => !v)}
-              className="w-9 h-9 flex items-center justify-center rounded-xl shrink-0"
-              style={{background:'rgba(255,255,255,0.07)',color:'rgba(255,255,255,0.7)'}}>
-              {mobileMenu ? <X size={16}/> : <Menu size={16}/>}
-            </button>
-          </div>
-
-          {/* Dropdown */}
-          {mobileMenu && (
-            <div className="mt-2 rounded-[18px] overflow-hidden"
-              style={{
-                background:'rgba(8,8,14,0.96)',
-                border:'1px solid rgba(255,255,255,0.08)',
-                boxShadow:'0 24px 64px rgba(0,0,0,0.6)',
-              }}>
-              <div className="p-2 space-y-0.5">
-                {links.map((link: any) => {
-                  const active = pathname === link.href || (link.href !== '/' && pathname.startsWith(link.href + '/'));
-                  return (
-                    <Link key={link.href} href={link.href}
-                      className="flex items-center px-4 py-3 rounded-[14px] text-[14px] font-semibold transition-none"
-                      style={{
-                        color:      active ? '#fff' : 'rgba(255,255,255,0.5)',
-                        background: active ? '#2563EB' : 'transparent',
-                      }}>
-                      {link.label}
-                    </Link>
-                  );
-                })}
-              </div>
-              <div className="mx-3" style={{height:1,background:'rgba(255,255,255,0.06)'}}/>
-              <div className="p-2">
-                <p className="px-4 pt-1 pb-1.5 text-[10px] font-bold uppercase tracking-widest" style={{color:'rgba(255,255,255,0.3)'}}>
-                  Log in as
-                </p>
-                {LOGIN_OPTIONS.map(({ label, href, icon: Icon }) => (
-                  <Link key={href} href={href}
-                    className="flex items-center gap-2.5 px-4 py-3 rounded-[14px] text-[14px] font-semibold"
-                    style={{color:'rgba(255,255,255,0.5)'}}>
-                    <Icon size={14} className="shrink-0" style={{color:'rgba(255,255,255,0.3)'}} />
-                    {label}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </nav>
-
-      {(searchOpen || loginMenuOpen) && (
-        <div className="fixed inset-0 z-40" onClick={() => { closeSearch(); setLoginMenuOpen(false); }}/>
-      )}
-    </>
+        )}
+      </div>
+    </header>
   );
 }

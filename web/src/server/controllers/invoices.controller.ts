@@ -5,6 +5,8 @@ import { body, handler, HttpError, json, query } from '../http';
 import { pagination, toDate, toNumber } from '../validate';
 import { parseUpload } from '../upload';
 import { deleteUpload } from '../storage';
+import { Prisma } from '@/generated/prisma/client';
+import { cleanDesign, formatInvoiceNumber, invoiceNumberRegex } from '@/lib/invoiceDesign';
 
 /* ─── helpers ─────────────────────────────────────────────── */
 /** Interactive transactions do several round-trips; allow for a slow database. */
@@ -20,8 +22,19 @@ const OUTSTANDING_STATUSES = ['SENT', 'OVERDUE'];
  * Next free number for a doc type ("latest + 1"). `attempt` skips ahead when a
  * concurrent request grabbed the same number (see withUniqueRetry).
  */
-async function nextNumber(docType: string, attempt = 0) {
+async function nextNumber(docType: string, attempt = 0, design?: any) {
   const prefix = PREFIX[docType] || 'INV';
+  // A template's own pattern, e.g. "{SEQ:4}/{MM}/{FY}" → 0019/09/26-27.
+  const pattern = typeof design?.numberFormat === 'string' && design.numberFormat.trim();
+  if (pattern) {
+    const now = new Date();
+    const rows = await prisma.$queryRaw<{ seq: number | null }[]>`
+      SELECT MAX((regexp_match("invoiceNo", ${invoiceNumberRegex(pattern, now, prefix)}))[1]::bigint)::int AS seq
+      FROM invoices WHERE "invoiceNo" ~ ${invoiceNumberRegex(pattern, now, prefix)}`;
+    const last = Number(rows[0]?.seq) || 0;
+    const start = Math.max(1, Number(design.numberStart) || 1);
+    return formatInvoiceNumber(pattern, Math.max(last + 1, start) + attempt, now, prefix);
+  }
   const yr     = new Date().getFullYear();
   const last   = await prisma.invoice.findFirst({
     where: { invoiceNo: { startsWith: `${prefix}-${yr}-` } },
@@ -54,7 +67,7 @@ function calcTotals(items: any[] = [], discountVal: any, discountType: any, taxR
 }
 
 /** Validates line items and normalises qty/unitPrice/total. */
-function normaliseItems(items: any): { description: string; qty: number; unit: string | null; unitPrice: number; total: number; sortOrder: number }[] {
+function normaliseItems(items: any): { description: string; qty: number; unit: string | null; unitPrice: number; total: number; fromDate: Date | null; toDate: Date | null; sortOrder: number }[] {
   if (!Array.isArray(items)) throw new HttpError(400, 'items must be an array');
   return items.map((it: any, idx: number) => {
     if (!it || typeof it !== 'object') throw new HttpError(400, `items[${idx}] is invalid`);
@@ -67,6 +80,8 @@ function normaliseItems(items: any): { description: string; qty: number; unit: s
       unit:        it.unit || null,
       unitPrice,
       total:       qty * unitPrice,
+      fromDate:    toDate(it.fromDate, `items[${idx}].fromDate`) ?? null,
+      toDate:      toDate(it.toDate, `items[${idx}].toDate`) ?? null,
       sortOrder:   idx,
     };
   });
@@ -172,7 +187,8 @@ export const get = handler<{ id: string }>(async (req, { params }) => {
   return json(doc);
 });
 
-export const LOGO_PATH = /^uploads\/images\/[\w-]+\.(png|jpe?g|webp)$/i;
+/** Images that may be printed into invoice HTML: uploads, or the app's own brand assets. */
+export const LOGO_PATH = /^(uploads\/images\/[\w-]+\.(png|jpe?g|webp)|brand\/[\w.-]+\.(png|jpe?g|webp))$/i;
 const INVOICE_SETTINGS_KEY = 'invoiceSettings';
 
 /* ─── scalar fields helper ────────────────────────────────── */
@@ -180,7 +196,8 @@ const INVOICE_SETTINGS_KEY = 'invoiceSettings';
 const NULLABLE_TEXT = [
   'subject', 'description', 'terms', 'notes',
   'fromName', 'fromAddress', 'fromEmail', 'fromPhone', 'fromTaxNo', 'fromRegNo',
-  'billingName', 'billingAddress', 'billingEmail', 'billingPhone', 'billingHsnSac',
+  'billingName', 'billingAddress', 'billingEmail', 'billingPhone', 'billingHsnSac', 'billingTaxNo',
+  'paymentTerms', 'fromWebsite', 'fromEmailAlt', 'bankAccountName', 'bankBranch',
   'logoText', 'logoUrl', 'watermark', 'footerText',
   'paymentRef', 'bankName', 'bankAccount', 'bankIBAN', 'bankSwift', 'bankRoutingNo', 'bankSortCode',
 ];
@@ -209,6 +226,12 @@ function scalarFields(rest: any, partial = false) {
   if (!partial || has('watermarkOpacity')) {
     const n = toNumber(rest.watermarkOpacity, 'watermarkOpacity');
     out.watermarkOpacity = n !== undefined ? Math.round(n) : 12;
+  }
+  if (!partial || has('designOptions')) {
+    let design;
+    try { design = cleanDesign(rest.designOptions, p => LOGO_PATH.test(p)); }
+    catch (e: any) { throw new HttpError(400, e.message); }
+    out.designOptions = design ?? Prisma.DbNull;
   }
   checkEnum(out.status, STATUSES, 'status');
   // Only a logo uploaded through /invoices/logo: the path is printed into the invoice HTML.
@@ -241,7 +264,7 @@ export const create = handler(async (req) => {
   try {
     const doc = await withUniqueRetry(async (attempt) => prisma.invoice.create({
       data: {
-        invoiceNo: await nextNumber(docType, attempt), docType,
+        invoiceNo: await nextNumber(docType, attempt, rest.designOptions), docType,
         ...header,
         discountType, taxRate: taxRateNum,
         issueDate:  issueDate || new Date(),
@@ -374,7 +397,8 @@ export const duplicate = handler<{ id: string }>(async (req, { params }) => {
     const doc = await withUniqueRetry(async (attempt) => prisma.invoice.create({
       data: {
         ...srcData,
-        invoiceNo: await nextNumber(src.docType, attempt),
+        invoiceNo: await nextNumber(src.docType, attempt, src.designOptions),
+        designOptions: src.designOptions ?? Prisma.DbNull,
         status: 'DRAFT',
         issueDate: new Date(),
         // eslint-disable-next-line @typescript-eslint/no-unused-vars

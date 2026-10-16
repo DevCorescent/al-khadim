@@ -5,7 +5,9 @@ import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import Modal from './Modal';
 import TemporaryPasswordPanel, { TemporaryPasswordInfo } from './TemporaryPasswordPanel';
-import { Video, MapPin, X, UserPlus } from 'lucide-react';
+import { Video, MapPin, X, UserPlus, KeyRound, Lock } from 'lucide-react';
+import { useAuth } from '@/lib/auth';
+import CredentialFields, { draftToPayload, emptyCredentialDraft, type CredentialDraft } from './interview/CredentialFields';
 
 interface Props {
   isOpen: boolean;
@@ -40,6 +42,10 @@ export default function ScheduleInterviewModal({ isOpen, onClose, shareId, candi
   const [emailInput, setEmailInput] = useState('');
   const [notes, setNotes] = useState(existing?.notes || '');
   const [tempPassword, setTempPassword] = useState<TemporaryPasswordInfo | null>(null);
+  // Optional login the candidate needs to attend (e.g. an assessment platform).
+  const canManageCredentials = useAuth(s => s.can('interview_credentials', 'manage'));
+  const [giveCredentials, setGiveCredentials] = useState(false);
+  const [credentials, setCredentials] = useState<CredentialDraft>(() => emptyCredentialDraft(suggestedAt));
 
   function addEmails(raw: string) {
     const candidates = raw.split(/[,\n\s]/).map(s => s.trim()).filter(Boolean);
@@ -61,6 +67,7 @@ export default function ScheduleInterviewModal({ isOpen, onClose, shareId, candi
       location: mode === 'OFFLINE' ? location : undefined,
       interviewers,
       notes: notes || undefined,
+      ...(giveCredentials ? { credentials: draftToPayload(credentials) } : {}),
     }),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['profile-share-detail', shareId] });
@@ -72,6 +79,7 @@ export default function ScheduleInterviewModal({ isOpen, onClose, shareId, candi
           : res.data.accountCreated
             ? 'Interview scheduled. Candidate portal account created — login details emailed to the candidate.'
             : 'Interview scheduled and emailed to the candidate and company.',
+        res.data.credentialsSet ? 'Interview login saved to the candidate’s dashboard.' : '',
         n > 0 ? `${n} interviewer${n !== 1 ? 's' : ''} notified.` : '',
       ].filter(Boolean).join(' '));
       if (candidateEmailFailed && !res.data.temporaryPassword) {
@@ -93,7 +101,8 @@ export default function ScheduleInterviewModal({ isOpen, onClose, shareId, candi
     onError: (e: any) => toast.error(e.response?.data?.error || 'Failed to schedule interview'),
   });
 
-  const canSubmit = scheduledAt && (mode === 'ONLINE' ? meetLink : location);
+  const credentialsReady = !giveCredentials || (credentials.username.trim() && credentials.password && credentials.expiresAt);
+  const canSubmit = scheduledAt && (mode === 'ONLINE' ? meetLink : location) && credentialsReady;
 
   return (
     <>
@@ -167,6 +176,29 @@ export default function ScheduleInterviewModal({ isOpen, onClose, shareId, candi
           <textarea className="input w-full h-20 resize-none text-sm" value={notes} onChange={e => setNotes(e.target.value)}
             placeholder="e.g. Please bring a printed copy of your portfolio" />
         </div>
+
+        {canManageCredentials && (
+          <div className={`rounded-xl border ${giveCredentials ? 'border-primary-200 bg-primary-50/40' : 'border-gray-200'} p-3`}>
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={giveCredentials} className="mt-0.5 accent-primary-500"
+                onChange={e => {
+                  setGiveCredentials(e.target.checked);
+                  // Expiry defaults to one day after the chosen interview time.
+                  if (e.target.checked && scheduledAt) setCredentials(c => ({ ...c, expiresAt: emptyCredentialDraft(scheduledAt).expiresAt }));
+                }} />
+              <span>
+                <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-800"><KeyRound size={14} className="text-primary-500" /> Give the candidate login credentials for this interview</span>
+                <span className="block text-[11px] text-gray-500 mt-0.5">For an assessment or interview platform. Emailed to the candidate and shown in their dashboard until they expire.</span>
+              </span>
+            </label>
+            {giveCredentials && (
+              <div className="mt-3 pt-3 border-t border-primary-100">
+                <CredentialFields value={credentials} onChange={setCredentials} interviewAt={scheduledAt || suggestedAt} />
+                <p className="flex items-center gap-1.5 text-[11px] text-gray-500 mt-2"><Lock size={11} /> Stored encrypted. Only the candidate can see them — not the company, interviewers or other staff.</p>
+              </div>
+            )}
+          </div>
+        )}
 
         <p className="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">
           This will email the candidate, the company{interviewers.length > 0 ? `, and ${interviewers.length} interviewer${interviewers.length !== 1 ? 's' : ''}` : ''} with

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import YouTubeEmbed from '@/components/YouTubeEmbed';
 import CandidateDocumentRequests from '@/components/CandidateDocumentRequests';
+import CandidateInterviewCredentials from '@/components/CandidateInterviewCredentials';
 
 const STATUS_LABELS: Record<string, { label: string; color: string; icon: any }> = {
   NEW:                  { label: 'Applied',            color: 'bg-blue-100 text-blue-700',   icon: Clock },
@@ -97,6 +98,8 @@ export default function CandidateDashboard() {
       <div className="grid lg:grid-cols-3 gap-4">
         {/* Applications list */}
         <div className="lg:col-span-2 space-y-4">
+          {/* Interview logins first: they are time-limited and the most urgent thing here. */}
+          <CandidateInterviewCredentials />
           {/* Intro video */}
           <div className="bg-white rounded-2xl border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-3">

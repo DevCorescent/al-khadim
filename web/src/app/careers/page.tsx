@@ -42,9 +42,9 @@ function CareersContent() {
       <Navbar />
       <main className="pt-[84px]">
         {/* Hero */}
-        <section className="bg-gray-900 text-white py-20">
+        <section className="bg-[linear-gradient(135deg,#0A3D4C_0%,#061E26_100%)] text-white py-20">
           <div className="max-w-4xl mx-auto px-4 text-center">
-            <p className="text-primary-400 text-sm font-semibold tracking-widest uppercase mb-4">CAREERS</p>
+            <p className="text-[#C6A15B] text-sm font-semibold tracking-widest uppercase mb-4">CAREERS</p>
             <h1 className="font-heading text-5xl font-bold mb-6">Find Your Dream Job</h1>
             <p className="text-gray-400 text-lg mb-10">Explore opportunities across UAE and beyond</p>
             <div className="relative max-w-xl mx-auto">

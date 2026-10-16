@@ -72,9 +72,7 @@ export default function CompanyRegisterPage() {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <header className="bg-white border-b border-gray-200 px-5 py-4 flex items-center gap-3">
         <Link href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-primary-400 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-sm">A</span>
-          </div>
+          <img src="/brand/logo-96.png" alt="Al Khadim" className="w-8 h-8 rounded-full shrink-0 shadow-sm" />
           <span className="font-bold text-gray-900">Al Khadim</span>
         </Link>
         <span className="text-gray-300">›</span>

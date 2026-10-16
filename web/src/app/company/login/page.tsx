@@ -34,19 +34,17 @@ export default function CompanyLoginPage() {
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
-      <div className="hidden lg:flex lg:w-5/12 bg-slate-900 flex-col justify-between p-14 relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-5/12 bg-[linear-gradient(135deg,#0A3D4C_0%,#061E26_100%)] flex-col justify-between p-14 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-primary-400/10 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/3" />
+          <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-[#C6A15B]/10 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/3" />
           <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-primary-400/5 rounded-full blur-[80px]" />
         </div>
         <Link href="/" className="relative z-10 flex items-center gap-2.5">
-          <div className="w-10 h-10 bg-primary-400 rounded-xl flex items-center justify-center">
-            <span className="text-white font-bold">A</span>
-          </div>
+          <img src="/brand/logo-96.png" alt="Al Khadim" className="w-10 h-10 rounded-full shrink-0 shadow-sm" />
           <span className="text-white font-bold text-lg">Al Khadim</span>
         </Link>
         <div className="relative z-10">
-          <p className="text-primary-400 text-xs font-bold tracking-widest uppercase mb-4">COMPANY PORTAL</p>
+          <p className="text-[#C6A15B] text-xs font-bold tracking-widest uppercase mb-4">COMPANY PORTAL</p>
           <h2 className="text-4xl font-bold text-white leading-tight mb-4">
             Review candidates<br />shared with<br />
             <span className="text-gray-400 font-normal">your company.</span>
@@ -61,9 +59,7 @@ export default function CompanyLoginPage() {
       <div className="flex-1 flex items-center justify-center px-6 py-12 bg-white">
         <div className="w-full max-w-md">
           <Link href="/" className="lg:hidden flex items-center gap-2 mb-10">
-            <div className="w-9 h-9 bg-primary-400 rounded-xl flex items-center justify-center">
-              <span className="text-white font-bold text-sm">A</span>
-            </div>
+            <img src="/brand/logo-96.png" alt="Al Khadim" className="w-9 h-9 rounded-full shrink-0 shadow-sm" />
             <span className="font-bold text-gray-900">Al Khadim</span>
           </Link>
 

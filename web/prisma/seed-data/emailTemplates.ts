@@ -178,6 +178,7 @@ export const EMAIL_TEMPLATES: Prisma.EmailTemplateCreateInput[] = [
       { key: 'meetingOrLocationBlock', label: 'Meeting link or location (HTML fragment)', sample: '<p><strong>Meeting link:</strong> <a href="#">Join</a></p>' },
       { key: 'notesBlock', label: 'Notes (HTML fragment, may be blank)', sample: '<p><strong>Notes:</strong> Bring a copy of your CV.</p>' },
       { key: 'accountBlock', label: 'Portal account / credentials block (HTML fragment)', sample: '<p>You can view this anytime in your candidate dashboard.</p>' },
+      { key: 'credentialsBlock', label: 'Interview login details (HTML fragment, may be blank)', sample: '' },
     ],
   },
   {
@@ -256,6 +257,22 @@ export const EMAIL_TEMPLATES: Prisma.EmailTemplateCreateInput[] = [
       { key: 'companyName', label: 'Company name', sample: 'Acme Trading LLC' },
       { key: 'acceptLink', label: 'Accept invite link', sample: 'https://alkhadim.ae/company/accept-invite/abc123' },
       { key: 'expiryDays', label: 'Expiry (days)', sample: '7' },
+    ],
+  },
+  {
+    slug: 'interview-credentials-candidate',
+    name: 'Interview Login Details — Candidate',
+    category: 'TRANSACTIONAL',
+    module: 'interviews',
+    subject: 'Your login details for the {{jobTitle}} interview',
+    html: `<p>Dear {{candidateName}},</p><p>Here are your login details for your interview for <strong>{{jobTitle}}</strong> at <strong>{{companyName}}</strong> ({{whenFormatted}}).</p>{{credentialsBlock}}<p><a href="{{dashboardUrl}}">Open your candidate dashboard</a></p>`,
+    mergeTags: [
+      { key: 'candidateName', label: 'Candidate name', sample: 'Ahmed Khan' },
+      { key: 'jobTitle', label: 'Job title', sample: 'Senior Accountant' },
+      { key: 'companyName', label: 'Company name', sample: 'Acme Trading LLC' },
+      { key: 'whenFormatted', label: 'Interview date & time', sample: 'Sunday, 12 October 2026 at 3:00 PM' },
+      { key: 'credentialsBlock', label: 'Login details table (HTML fragment)', sample: '<p><strong>Username:</strong> ahmed.khan<br/><strong>Password:</strong> Xy7#pQ2m</p>' },
+      { key: 'dashboardUrl', label: 'Candidate dashboard URL', sample: 'https://alkhadim.ae/candidate/dashboard' },
     ],
   },
 ];

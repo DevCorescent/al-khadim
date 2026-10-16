@@ -23,6 +23,9 @@
 import { prisma } from '@/lib/prisma';
 import { escapeHtml } from '../validate';
 import { sendMail } from './mailer';
+import { isBuilderDesign } from '@/lib/email/blocks';
+import { renderEmail } from '@/lib/email/render';
+import { emailAssetBase, getEmailTheme } from './emailTheme';
 
 /** Marks a string as trusted HTML that `render` must not escape. */
 export class SafeHtml {
@@ -101,6 +104,12 @@ export async function sendTemplatedMail({ templateSlug, to, data = {}, module, c
   const subject = subjectOverride
     ? String(subjectOverride).replace(/[\r\n]+/g, ' ')
     : renderSubject(template.subject, data);
-  const html = render(template.html, data);
+  // Builder designs are re-rendered with the current brand theme, so theme
+  // changes apply to every template without re-saving them.
+  const source = isBuilderDesign(template.design)
+    ? renderEmail(template.design, await getEmailTheme(), { assetBase: emailAssetBase(), subject })
+    : template.html;
+  // {{appUrl}} is always available, so buttons can link into the app.
+  const html = render(source, { appUrl: emailAssetBase(), ...data });
   return sendMail({ module: module || template.module, to, cc, bcc, subject, html, replyTo, attachments });
 }

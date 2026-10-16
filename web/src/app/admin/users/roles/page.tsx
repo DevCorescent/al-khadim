@@ -11,7 +11,7 @@ import {
   Eye, Users, Briefcase, Building2, FileText, DollarSign,
   BarChart3, Settings, UserCheck, Calendar, ClipboardList,
   X, Loader2, Check, Palette, ChevronDown, ChevronUp, Landmark, Mail,
-  type LucideIcon,
+  KeyRound, LayoutTemplate, type LucideIcon,
 } from 'lucide-react';
 
 /* ── Permission matrix: the same data the server enforces (src/lib/permissionMatrix.ts) ── */
@@ -32,6 +32,8 @@ const MODULE_META: Record<string, { label: string; icon: LucideIcon }> = {
   emails:      { label: 'Emails',          icon: Mail },
   reports:     { label: 'Reports',         icon: BarChart3 },
   site_editor: { label: 'Site Editor',     icon: Palette },
+  pages:       { label: 'Page Builder',    icon: LayoutTemplate },
+  interview_credentials: { label: 'Interview credentials', icon: KeyRound },
   users:       { label: 'User Management', icon: ShieldCheck },
   settings:    { label: 'Settings',        icon: Settings },
 };

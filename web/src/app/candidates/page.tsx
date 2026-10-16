@@ -38,7 +38,7 @@ function CandidatesContent() {
       <Navbar />
       <main className="pt-[84px]">
         {/* Hero */}
-        <section className="bg-slate-950 text-white py-16 sm:py-20 relative overflow-hidden">
+        <section className="bg-[linear-gradient(135deg,#0A3D4C_0%,#061E26_100%)] text-white py-16 sm:py-20 relative overflow-hidden">
           <div className="absolute inset-0 pointer-events-none">
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-blue-600/15 rounded-full blur-[100px]" />
           </div>

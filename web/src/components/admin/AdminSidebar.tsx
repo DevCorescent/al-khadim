@@ -7,7 +7,7 @@ import {
   Building2, FileText, BarChart3, Settings, LogOut,
   ChevronDown, ChevronsLeft, ChevronsRight, Clock, DollarSign, Globe,
   ClipboardList, Bell, UserPlus, Palette, X, Shield, Mail, Share2, TrendingUp,
-  Receipt, Landmark, PieChart, Bot, UserCog, ClipboardCheck,
+  Receipt, Landmark, PieChart, Bot, UserCog, ClipboardCheck, LayoutTemplate,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -68,7 +68,12 @@ const navItems: NavItem[] = [
       { label: 'Roles & Perms', href: '/admin/users/roles', icon: Shield },
     ],
   },
-  { label: 'Site Editor', href: '/admin/site-editor', icon: Palette },
+  {
+    label: 'Website', icon: Palette, children: [
+      { label: 'Homepage Builder', href: '/admin/site-editor', icon: Palette },
+      { label: 'Pages',            href: '/admin/pages',       icon: LayoutTemplate },
+    ],
+  },
   {
     label: 'Settings', icon: Settings, children: [
       { label: 'General',    href: '/admin/settings',              icon: Settings },
@@ -160,9 +165,7 @@ export default function AdminSidebar({ open, onClose, collapsed, onToggleCollaps
       {/* Logo */}
       <div className={clsx('pt-5 pb-4 flex items-center shrink-0', c ? 'px-3 justify-center' : 'px-4 justify-between')}>
         <Link href="/admin" onClick={handleNavClick} className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0" style={{ background: INK }}>
-            <span className="text-white font-black text-sm tracking-tight">AK</span>
-          </div>
+          <img src="/brand/logo-96.png" alt="Al Khadim" className="w-8 h-8 rounded-full shrink-0 shadow-sm" />
           {!c && (
             <div className="min-w-0">
               <p className="font-bold text-[13px] leading-tight tracking-wide text-gray-900 truncate">AL KHADIM</p>
@@ -357,9 +360,7 @@ function MobileSidebarBody({ pathname, onClose }: { pathname: string; onClose?: 
     <>
       <div className="px-4 pt-5 pb-4 flex items-center justify-between shrink-0">
         <Link href="/admin" onClick={handleNavClick} className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0" style={{ background: INK }}>
-            <span className="text-white font-black text-sm tracking-tight">AK</span>
-          </div>
+          <img src="/brand/logo-96.png" alt="Al Khadim" className="w-8 h-8 rounded-full shrink-0 shadow-sm" />
           <div>
             <p className="font-bold text-[13px] leading-tight tracking-wide text-gray-900">AL KHADIM</p>
             <p className="text-[10px] font-medium leading-tight text-gray-400">Admin Portal</p>

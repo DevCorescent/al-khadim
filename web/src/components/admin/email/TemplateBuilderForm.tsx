@@ -107,10 +107,6 @@ export default function TemplateBuilderForm({ value, onChange, editorRef, initia
           </div>
         </div>
 
-        <div>
-          <label className="label mb-2 block">Body</label>
-          <EmailEditor ref={editorRef} initialDesign={initialDesign} initialHtml={initialHtml} mergeTags={editorMergeTags} />
-        </div>
       </div>
 
       <div className="space-y-4">
@@ -156,6 +152,12 @@ export default function TemplateBuilderForm({ value, onChange, editorRef, initia
             </div>
           </div>
         )}
+      </div>
+      <div className="xl:col-span-3 min-w-0">
+        <label className="label mb-2 block">Body</label>
+        <EmailEditor ref={editorRef} initialDesign={initialDesign} initialHtml={initialHtml} mergeTags={editorMergeTags}
+          subject={value.subject}
+          tags={(existingMergeTags || []).map(t => ({ key: t.key, label: t.label, sample: t.sample }))} />
       </div>
     </div>
   );

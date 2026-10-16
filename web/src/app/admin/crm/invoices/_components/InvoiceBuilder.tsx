@@ -1,11 +1,14 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import MarkPaidModal from './MarkPaidModal';
+import PrintPreview from './PrintPreview';
+import DesignOptionsPanel from './DesignOptionsPanel';
+import { formatInvoiceNumber, normalizeDesign } from '@/lib/invoiceDesign';
 import { Plus, Trash2, ChevronDown, Save, Eye, ArrowLeft, Info, RefreshCw, Palette, CheckSquare, ImagePlus, Loader2, LayoutTemplate, BookmarkPlus } from 'lucide-react';
 
 /* ─── Currency data ──────────────────────────────────────────── */
@@ -60,9 +63,11 @@ const PAYMENT_METHODS = [
   { value:'OTHER',         label:'Other' },
 ];
 
-const DATE_FORMATS = ['DD/MM/YYYY','MM/DD/YYYY','YYYY-MM-DD','DD MMM YYYY'];
+const DATE_FORMATS = ['DD/MM/YYYY','DD-MM-YYYY','MM/DD/YYYY','YYYY-MM-DD','DD MMM YYYY'];
+const PAYMENT_TERMS = ['Immediately','Due on receipt','Net 7','Net 15','Net 30','Net 45','Net 60'];
 
 const TEMPLATES = [
+  { key:'letterhead', label:'Letterhead', desc:'Tax invoice on your letterhead: bordered table, amount in words, stamp' },
   { key:'classic',    label:'Classic',    desc:'Traditional header with ruled lines' },
   { key:'modern',     label:'Modern',     desc:'Bold gradient header with card sections' },
   { key:'minimal',    label:'Minimal',    desc:'Clean typography, no background fills' },
@@ -75,6 +80,7 @@ const FONT_FAMILIES = [
   { value:'courier',   label:'Courier (Mono)' },
   { value:'trebuchet', label:'Trebuchet MS' },
   { value:'inter',     label:'Inter' },
+  { value:'calibri',   label:'Calibri (office documents)' },
 ];
 
 const TABLE_STYLES = [
@@ -98,7 +104,7 @@ const PRESET_COLORS = [
 ];
 
 /* ─── types ──────────────────────────────────────────────────── */
-interface Item { id?: string; description: string; qty: number; unit: string; unitPrice: number; total: number; }
+interface Item { id?: string; description: string; qty: number; unit: string; unitPrice: number; total: number; fromDate?: string; toDate?: string; }
 interface FormState {
   docType: string; clientId: string; subject: string; status: string;
   currency: string; dateFormat: string;
@@ -106,6 +112,9 @@ interface FormState {
   fromName: string; fromAddress: string; fromEmail: string; fromPhone: string;
   fromTaxNo: string; fromRegNo: string;
   billingName: string; billingAddress: string; billingEmail: string; billingPhone: string; billingHsnSac: string;
+  billingTaxNo: string; paymentTerms: string; fromWebsite: string; fromEmailAlt: string;
+  bankAccountName: string; bankBranch: string;
+  designOptions: any;
   discount: number; discountType: string; taxRate: number; taxLabel: string;
   paymentMethod: string; paymentRef: string;
   bankName: string; bankAccount: string; bankIBAN: string; bankSwift: string;
@@ -128,6 +137,8 @@ const BLANK: FormState = {
   dueDate:'', validUntil:'',
   fromName:'', fromAddress:'', fromEmail:'', fromPhone:'', fromTaxNo:'', fromRegNo:'',
   billingName:'', billingAddress:'', billingEmail:'', billingPhone:'', billingHsnSac:'',
+  billingTaxNo:'', paymentTerms:'', fromWebsite:'', fromEmailAlt:'', bankAccountName:'', bankBranch:'',
+  designOptions: null,
   discount:0, discountType:'FIXED', taxRate:0, taxLabel:'VAT',
   paymentMethod:'BANK_TRANSFER', paymentRef:'',
   bankName:'', bankAccount:'', bankIBAN:'', bankSwift:'', bankRoutingNo:'', bankSortCode:'',
@@ -183,19 +194,20 @@ function loadDiscount(existing: any): number {
 /** Form fields a saved template carries. Never client, dates, status or billing (those are per invoice). */
 const TEMPLATE_KEYS = [
   'docType', 'currency', 'dateFormat', 'subject', 'description',
-  'fromName', 'fromAddress', 'fromEmail', 'fromPhone', 'fromTaxNo', 'fromRegNo',
-  'discount', 'discountType', 'taxRate', 'taxLabel', 'paymentMethod',
-  'bankName', 'bankAccount', 'bankIBAN', 'bankSwift', 'bankRoutingNo', 'bankSortCode',
+  'fromName', 'fromAddress', 'fromEmail', 'fromPhone', 'fromTaxNo', 'fromRegNo', 'fromWebsite', 'fromEmailAlt',
+  'discount', 'discountType', 'taxRate', 'taxLabel', 'paymentMethod', 'paymentRef', 'paymentTerms',
+  'bankName', 'bankAccount', 'bankIBAN', 'bankSwift', 'bankRoutingNo', 'bankSortCode', 'bankAccountName', 'bankBranch',
   'terms', 'notes',
   'template', 'primaryColor', 'accentColor', 'fontFamily', 'logoText', 'logoUrl', 'logoShape', 'tableStyle',
   'watermark', 'watermarkOpacity', 'showHeader', 'showFooter', 'showSignature', 'footerText',
+  'designOptions',
 ] as const;
 
 function applyTemplate(f: FormState, data: any, { keepDocType = false } = {}): FormState {
   const next: any = { ...f };
   for (const k of TEMPLATE_KEYS) {
     if (keepDocType && k === 'docType') continue;
-    if (data[k] !== undefined && data[k] !== null) next[k] = data[k];
+    if (data[k] !== undefined && data[k] !== null) next[k] = k === 'designOptions' ? JSON.parse(JSON.stringify(data[k])) : data[k];
   }
   if (Array.isArray(data.items) && data.items.length) {
     next.items = data.items.map((i: any) => ({
@@ -206,12 +218,24 @@ function applyTemplate(f: FormState, data: any, { keepDocType = false } = {}): F
   return next;
 }
 
-export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defaultClientId = '', templateId = '' }: { existing?: any; defaultType?: string; defaultClientId?: string; templateId?: string }) {
+/**
+ * `templateMode` turns the builder into the template studio: no client,
+ * number, dates or status; saving writes an invoice template instead.
+ */
+export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defaultClientId = '', templateId = '', templateMode }: {
+  existing?: any; defaultType?: string; defaultClientId?: string; templateId?: string;
+  templateMode?: { template: any | null };
+}) {
+  const isTemplate = !!templateMode;
   const router  = useRouter();
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'details'|'from'|'billing'|'payment'|'design'>('details');
 
   const init = useCallback((): FormState => {
+    if (templateMode) {
+      const t = templateMode.template;
+      return t ? applyTemplate({ ...BLANK, items: [] }, t.data || {}) : { ...BLANK, currency: 'AED', taxRate: 5, items: [] };
+    }
     if (!existing) return { ...BLANK, docType: defaultType, clientId: defaultClientId };
     return {
       docType:       existing.docType       || defaultType,
@@ -219,7 +243,7 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
       subject:       existing.subject       || '',
       status:        existing.status        || 'DRAFT',
       currency:      existing.currency      || 'USD',
-      dateFormat:    existing.dateFormat    || 'DD/MM/YYYY',
+      dateFormat:    existing.designOptions?.dateFormat || existing.dateFormat || 'DD/MM/YYYY',
       issueDate:     existing.issueDate     ? existing.issueDate.split('T')[0]   : BLANK.issueDate,
       dueDate:       existing.dueDate       ? existing.dueDate.split('T')[0]     : '',
       validUntil:    existing.validUntil    ? existing.validUntil.split('T')[0]  : '',
@@ -234,6 +258,13 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
       billingEmail:  existing.billingEmail  || existing.client?.email || '',
       billingPhone:  existing.billingPhone  || existing.client?.phone || '',
       billingHsnSac: existing.billingHsnSac || existing.client?.hsnSac || '',
+      billingTaxNo:  existing.billingTaxNo  || '',
+      paymentTerms:  existing.paymentTerms  || '',
+      fromWebsite:   existing.fromWebsite   || '',
+      fromEmailAlt:  existing.fromEmailAlt  || '',
+      bankAccountName: existing.bankAccountName || '',
+      bankBranch:    existing.bankBranch    || '',
+      designOptions: existing.designOptions || null,
       discount:      loadDiscount(existing),
       discountType:  existing.discountType  || 'FIXED',
       taxRate:       existing.taxRate       ?? 0,
@@ -250,7 +281,8 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
       notes:         existing.notes         || '',
       description:   existing.description   || '',
       items: (existing.items?.length > 0)
-        ? existing.items.map((i: any) => ({ ...i, qty:i.qty||1, unitPrice:i.unitPrice||0, total:(i.qty||1)*(i.unitPrice||0) }))
+        ? existing.items.map((i: any) => ({ ...i, qty:i.qty||1, unitPrice:i.unitPrice||0, total:(i.qty||1)*(i.unitPrice||0),
+            fromDate: i.fromDate ? String(i.fromDate).split('T')[0] : '', toDate: i.toDate ? String(i.toDate).split('T')[0] : '' }))
         : BLANK.items,
       // Design
       template:        existing.template        || 'classic',
@@ -268,7 +300,7 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
       showSignature:   existing.showSignature   ?? false,
       footerText:      existing.footerText      || '',
     };
-  }, [existing, defaultType, defaultClientId]);
+  }, [existing, defaultType, defaultClientId, templateMode?.template?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [form, setForm] = useState<FormState>(init);
   useEffect(() => { setForm(init()); }, [init]);
@@ -288,7 +320,7 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
   // New documents start from ?template=<id>, else the default template (once).
   const templateApplied = useRef(false);
   useEffect(() => {
-    if (existing || templateApplied.current || !templates.length) return;
+    if (existing || isTemplate || templateApplied.current || !templates.length) return;
     const tpl = templates.find((t: any) => t.id === templateId) || templates.find((t: any) => t.isDefault);
     templateApplied.current = true;
     if (!tpl) return;
@@ -395,13 +427,40 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
       return { ...f, items };
     });
   };
-  const addItem    = () => setForm(f => ({ ...f, items:[...f.items, { description:'', qty:1, unit:'', unitPrice:0, total:0 }] }));
+  const addItem    = () => setForm(f => ({ ...f, items:[...f.items, { description:'', qty:1, unit:'', unitPrice:0, total:0, fromDate:'', toDate:'' }] }));
   const removeItem = (idx:number) => setForm(f => ({ ...f, items:f.items.filter((_,i)=>i!==idx) }));
 
   /* ─── totals ─── */
   const { subtotal, discAmt, taxAmt, total } = calcTotals(form.items, Number(form.discount), form.discountType, Number(form.taxRate));
   const fmtN = (n:number) => n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
   const fmtC = (n:number) => `${form.currency} ${fmtN(n)}`;
+
+  /* ─── template studio ─── */
+  const [tplMeta, setTplMeta] = useState(() => ({
+    name: templateMode?.template?.name || '',
+    description: templateMode?.template?.description || '',
+    isDefault: !!templateMode?.template?.isDefault,
+    includeItems: !!templateMode?.template?.data?.items?.length,
+  }));
+  async function saveTemplateRecord() {
+    if (!tplMeta.name.trim()) { toast.error('Give the template a name'); return; }
+    setSaving(true);
+    try {
+      const data: any = {};
+      for (const k of TEMPLATE_KEYS) data[k] = (form as any)[k];
+      if (tplMeta.includeItems) data.items = form.items.filter(i => i.description.trim());
+      const payload = { name: tplMeta.name, description: tplMeta.description, isDefault: tplMeta.isDefault, data };
+      const id = templateMode?.template?.id;
+      const res = id ? await api.put(`/invoice-templates/${id}`, payload) : await api.post('/invoice-templates', payload);
+      qc.invalidateQueries({ queryKey: ['invoice-templates'] });
+      toast.success(id ? 'Template saved' : 'Template created');
+      if (!id) router.replace(`/admin/crm/invoices/templates/${res.data.id}`);
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || 'Could not save the template');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   /* ─── save ─── */
   // Saving an existing unpaid document as PAID first asks which bank account received the money.
@@ -416,9 +475,11 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
     }
     setSaving(true);
     try {
+      // The chosen date format travels with the layout options (there is no column for it).
+      const body = { ...form, designOptions: { ...normalizeDesign(form.designOptions), dateFormat: form.dateFormat } };
       const res = existing
-        ? await api.put(`/invoices/${existing.id}`, paid?.accountId ? { ...form, accountId: paid.accountId } : form)
-        : await api.post('/invoices', form);
+        ? await api.put(`/invoices/${existing.id}`, paid?.accountId ? { ...body, accountId: paid.accountId } : body)
+        : await api.post('/invoices', body);
       setPendingPaidSave(null);
       toast.success(existing ? 'Saved' : 'Created');
       if (andPreview) router.push(`/admin/crm/invoices/${res.data.id}`);
@@ -436,20 +497,53 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
     { key:'billing' as const,  label:'Bill To' },
     { key:'payment' as const,  label:'Payment' },
     { key:'design'  as const,  label:'🎨 Design', icon:<Palette size={11}/> },
-  ];
+  ].filter(t => !(isTemplate && t.key === 'billing'));
+  const design = normalizeDesign(form.designOptions);
+  const showPeriod = form.template === 'letterhead' && design.columns.period;
 
   const pc = form.primaryColor || '#6366f1';
-  const onPc = isDark(pc) ? '#ffffff' : '#111111';
+
+  // What the preview prints. Templates have no customer or lines yet, so they show sample ones.
+  const previewInvoice = useMemo(() => {
+    const realItems = form.items.filter(i => i.description.trim());
+    const sample = isTemplate && !realItems.length;
+    const items = sample
+      ? [{ description: 'Sample service — monthly manpower supply', qty: 1, unit: '', unitPrice: 1500, total: 1500 },
+         { description: 'Sample service charges', qty: 1, unit: '', unitPrice: 150, total: 150 }]
+      : realItems;
+    const t = calcTotals(items as Item[], Number(form.discount), form.discountType, Number(form.taxRate));
+    const issue = form.issueDate || new Date().toISOString().split('T')[0];
+    const invoiceNo = existing?.invoiceNo
+      || (design.numberFormat ? formatInvoiceNumber(design.numberFormat, design.numberStart, new Date(issue)) : 'DRAFT');
+    return {
+      ...form,
+      ...(isTemplate && !form.billingName ? {
+        billingName: 'Sample Customer LLC', billingAddress: 'Office 1201, Business Bay\nDubai, UAE',
+        billingPhone: '+971 4 000 0000', billingTaxNo: '100000000000003',
+      } : {}),
+      invoiceNo, issueDate: issue, dueDate: form.dueDate || (isTemplate ? issue : ''),
+      items, subtotal: t.subtotal, tax: t.taxAmt, totalAmount: t.total,
+      discount: Number(form.discount) || 0, taxRate: Number(form.taxRate) || 0,
+    };
+  }, [form, isTemplate, existing?.invoiceNo, design.numberFormat, design.numberStart]);
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* ── Top bar ── */}
       <div className="sticky top-0 z-20 bg-white border-b border-gray-100 px-6 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/admin/crm/invoices')}
+          <button onClick={() => router.push(isTemplate ? '/admin/crm/invoices/templates' : '/admin/crm/invoices')}
             className="w-8 h-8 flex items-center justify-center rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors">
             <ArrowLeft size={15} className="text-gray-500"/>
           </button>
+          {isTemplate ? (
+            <div className="min-w-0">
+              <input value={tplMeta.name} onChange={e => setTplMeta(m => ({ ...m, name: e.target.value }))} maxLength={100}
+                placeholder="Template name" className="text-base font-bold text-gray-900 bg-transparent border-b border-dashed border-gray-300 focus:border-primary-400 outline-none w-64 max-w-full" />
+              <input value={tplMeta.description} onChange={e => setTplMeta(m => ({ ...m, description: e.target.value }))} maxLength={500}
+                placeholder="Short description (optional)" className="block text-xs text-gray-500 bg-transparent outline-none w-64 max-w-full mt-0.5" />
+            </div>
+          ) : (
           <div>
             <div className="flex items-center gap-1">
               <select value={form.docType} onChange={set('docType')}
@@ -462,7 +556,30 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
             </div>
             <p className="text-xs text-gray-400">{existing ? `Editing ${existing.invoiceNo}` : `New ${DOC_LABELS[form.docType]||'Document'}`}</p>
           </div>
+          )}
         </div>
+        {isTemplate ? (
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <select value={form.docType} onChange={set('docType')} title="Document type this template creates"
+              className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-primary-400/30">
+              <option value="INVOICE">Invoice</option>
+              <option value="PROFORMA_INVOICE">Proforma Invoice</option>
+              <option value="QUOTATION">Quotation</option>
+            </select>
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-xl px-3 py-2 cursor-pointer bg-white">
+              <input type="checkbox" checked={tplMeta.includeItems} onChange={e => setTplMeta(m => ({ ...m, includeItems: e.target.checked }))} className="accent-primary-500" />
+              Save line items
+            </label>
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-xl px-3 py-2 cursor-pointer bg-white">
+              <input type="checkbox" checked={tplMeta.isDefault} onChange={e => setTplMeta(m => ({ ...m, isDefault: e.target.checked }))} className="accent-primary-500" />
+              Default for new documents
+            </label>
+            <button onClick={saveTemplateRecord} disabled={saving}
+              className="flex items-center gap-2 bg-primary-400 hover:bg-primary-500 text-white font-bold text-sm px-4 py-2 rounded-xl disabled:opacity-60 shadow-sm">
+              <Save size={14}/> {saving ? 'Saving…' : templateMode?.template ? 'Save template' : 'Create template'}
+            </button>
+          </div>
+        ) : (
         <div className="flex items-center gap-2">
           <div className="relative flex items-center">
             <LayoutTemplate size={13} className="absolute left-3 text-gray-400 pointer-events-none" />
@@ -494,6 +611,7 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
             <Eye size={14}/> {saving?'Saving…':'Save & Preview'}
           </button>
         </div>
+        )}
       </div>
 
       {tplModal && createPortal(
@@ -552,20 +670,20 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
                 <h3 className="text-sm font-bold text-gray-700">Document Info</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="sm:col-span-2">
+                  {!isTemplate && <div className="sm:col-span-2">
                     <label className="block text-xs font-bold text-gray-500 mb-1">Client *</label>
                     <select value={form.clientId} onChange={set('clientId')}
                       className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30">
                       <option value="">Select client…</option>
                       {(clients as any[]).map((c:any)=><option key={c.id} value={c.id}>{c.companyName}</option>)}
                     </select>
-                  </div>
+                  </div>}
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-bold text-gray-500 mb-1">Subject / Title</label>
                     <input value={form.subject} onChange={set('subject')} placeholder="e.g. Recruitment Services — Q2 2026"
                       className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30"/>
                   </div>
-                  <div>
+                  {!isTemplate && <><div>
                     <label className="block text-xs font-bold text-gray-500 mb-1">Issue Date</label>
                     <input type="date" value={form.issueDate} onChange={set('issueDate')}
                       className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30"/>
@@ -578,6 +696,12 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
                       value={form.docType==='QUOTATION'?form.validUntil:form.dueDate}
                       onChange={form.docType==='QUOTATION'?set('validUntil'):set('dueDate')}
                       className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30"/>
+                  </div></>}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 mb-1">Payment Terms</label>
+                    <input value={form.paymentTerms} onChange={set('paymentTerms')} list="payment-terms" placeholder="e.g. Immediately"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30"/>
+                    <datalist id="payment-terms">{PAYMENT_TERMS.map(t => <option key={t} value={t} />)}</datalist>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-gray-500 mb-1">Currency</label>
@@ -626,6 +750,14 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
                         <input value={item.description} onChange={e=>updateItem(idx,'description',e.target.value)}
                           placeholder="Item or service description…"
                           className="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary-400/40 bg-white"/>
+                        {showPeriod && (
+                          <div className="grid grid-cols-2 gap-1 mt-1">
+                            <input type="date" value={item.fromDate || ''} onChange={e=>updateItem(idx,'fromDate',e.target.value)} title="From date"
+                              className="w-full border border-gray-200 rounded-lg px-1.5 py-1 text-[11px] text-gray-600 bg-white focus:outline-none"/>
+                            <input type="date" value={item.toDate || ''} onChange={e=>updateItem(idx,'toDate',e.target.value)} title="To date"
+                              className="w-full border border-gray-200 rounded-lg px-1.5 py-1 text-[11px] text-gray-600 bg-white focus:outline-none"/>
+                          </div>
+                        )}
                       </div>
                       <div className="col-span-2">
                         <input type="number" min="0" step="0.01" value={item.qty===0?'':item.qty}
@@ -645,7 +777,7 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
                         {fmtN((item.qty||0)*(item.unitPrice||0))}
                       </div>
                       <div className="col-span-1 flex justify-center">
-                        <button onClick={()=>removeItem(idx)} disabled={form.items.length===1}
+                        <button onClick={()=>removeItem(idx)} disabled={!isTemplate && form.items.length===1}
                           className="p-1.5 hover:bg-red-50 rounded-lg text-red-300 hover:text-red-500 disabled:opacity-20 transition-colors">
                           <Trash2 size={12}/>
                         </button>
@@ -727,6 +859,16 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
                   <input value={form.fromPhone} onChange={set('fromPhone')} placeholder="+1 555 000 0000"
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30"/>
                 </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Website</label>
+                  <input value={form.fromWebsite} onChange={set('fromWebsite')} placeholder="www.company.com"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30"/>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Second email</label>
+                  <input type="email" value={form.fromEmailAlt} onChange={set('fromEmailAlt')} placeholder="accounts@company.com"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30"/>
+                </div>
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-bold text-gray-500 mb-1">Address</label>
                   <textarea value={form.fromAddress} onChange={set('fromAddress')} rows={3}
@@ -734,7 +876,7 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30 resize-none"/>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 mb-1">Tax / VAT / GST Number</label>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Tax / VAT / TRN Number</label>
                   <input value={form.fromTaxNo} onChange={set('fromTaxNo')} placeholder="e.g. TRN 100234567890003"
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30"/>
                 </div>
@@ -789,6 +931,11 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30"/>
                 </div>
                 <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Customer TRN / VAT No.</label>
+                  <input value={form.billingTaxNo} onChange={set('billingTaxNo')} placeholder="e.g. 100123456700003"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400/30"/>
+                </div>
+                <div>
                   <label className="block text-xs font-bold text-gray-500 mb-1">HSN/SAC Code</label>
                   <input value={form.billingHsnSac} inputMode="numeric" placeholder="e.g. 998519"
                     onChange={e => { const v = e.target.value.replace(/\D/g, '').slice(0, 8); setForm(f => ({ ...f, billingHsnSac: v })); }}
@@ -839,6 +986,8 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
                   <h3 className="text-sm font-bold text-gray-700">Bank Details</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {[
+                      { f:'bankAccountName' as const, label:'Account Holder Name',     placeholder:'e.g. SANTOSH BHAGAT' },
+                      { f:'bankBranch'    as const, label:'Branch',                    placeholder:'e.g. Burjman, Dubai, UAE' },
                       { f:'bankName'      as const, label:'Bank Name',                 placeholder:'e.g. HSBC, Chase, Barclays' },
                       { f:'bankAccount'   as const, label:'Account Number',            placeholder:'0000 0000 0000' },
                       { f:'bankIBAN'      as const, label:'IBAN (International)',       placeholder:'GB29 NWBK 6016 1331 9268 19' },
@@ -907,6 +1056,9 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
                   ))}
                 </div>
               </div>
+
+              <DesignOptionsPanel value={form.designOptions} onChange={v => setVal('designOptions', v)}
+                letterhead={form.template === 'letterhead'} currency={form.currency} taxRate={Number(form.taxRate) || 0} />
 
               {/* Colors */}
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-5">
@@ -1083,8 +1235,10 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
         {/* ── Right: live preview ── */}
         <div className="xl:col-span-2">
           <div className="sticky top-[73px]">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 text-center">Live Preview</p>
-            <LivePreview form={form} subtotal={subtotal} discAmt={discAmt} taxAmt={taxAmt} total={total}/>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 text-center">
+              Live Preview{isTemplate && !form.items.some(i => i.description.trim()) ? ' · sample data' : ' · exactly as printed'}
+            </p>
+            <PrintPreview invoice={previewInvoice as any} />
           </div>
         </div>
       </div>
@@ -1102,6 +1256,20 @@ export default function InvoiceBuilder({ existing, defaultType = 'INVOICE', defa
 /* ─── Template Thumbnail ─────────────────────────────────────── */
 function TemplateThumbnail({ template, color }: { template: string; color: string }) {
   const rgb = parseInt(color.replace('#','').slice(0,2),16) + ',' + parseInt(color.replace('#','').slice(2,4),16) + ',' + parseInt(color.replace('#','').slice(4,6),16);
+  if (template === 'letterhead') return (
+    <div className="h-16 bg-white rounded-lg border border-gray-100 overflow-hidden px-1.5 pt-1">
+      <div className="h-1.5 rounded-sm" style={{background:color}}/>
+      <div className="flex items-center gap-1 mt-1">
+        <div className="w-3.5 h-3.5 rounded-full" style={{background:color}}/>
+        <div className="h-1.5 rounded w-1/3" style={{background:color}}/>
+        <div className="ml-auto space-y-0.5"><div className="h-0.5 w-6 bg-gray-300"/><div className="h-0.5 w-5 bg-gray-300"/></div>
+      </div>
+      <div className="mt-1 border border-gray-400 h-6 grid grid-cols-4">
+        {[0,1,2,3].map(i => <div key={i} className="border-r border-gray-300 last:border-0"/>)}
+      </div>
+      <div className="h-1.5 rounded-sm mt-1" style={{background:color}}/>
+    </div>
+  );
   if (template === 'classic') return (
     <div className="h-16 bg-white rounded-lg border border-gray-100 overflow-hidden">
       <div className="h-3" style={{borderBottom:`3px solid ${color}`}}/>
@@ -1147,282 +1315,6 @@ function TemplateThumbnail({ template, color }: { template: string; color: strin
         <div className="h-1 rounded w-full" style={{background:`${color}15`}}/>
         <div className="h-1 bg-gray-100 rounded w-full"/>
       </div>
-    </div>
-  );
-}
-
-/* ─── Live Preview (template-aware) ──────────────────────────── */
-function LivePreview({ form, subtotal, discAmt, taxAmt, total }: any) {
-  const fmtN = (n:number) => n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-  const fmtC = (n:number) => `${form.currency} ${fmtN(n)}`;
-  const DOC_LBL: Record<string,string> = { INVOICE:'INVOICE', PROFORMA_INVOICE:'PROFORMA INVOICE', QUOTATION:'QUOTATION' };
-  const senderName = form.fromName || 'Your Company';
-  const pc = form.primaryColor || '#6366f1';
-  const onPc = isDark(pc) ? '#fff' : '#111';
-  const dt = fmtDate(form.issueDate, form.dateFormat) || '—';
-  const dateLabel = form.docType==='QUOTATION' ? 'Valid Until' : 'Due Date';
-  const exDate    = fmtDate(form.dueDate||form.validUntil, form.dateFormat);
-  const tmpl = form.template || 'classic';
-
-  const logoRadius = form.logoShape==='circle'?'9999px':form.logoShape==='square'?'4px':'10px';
-  const logoChar   = (form.logoText || senderName[0] || '?').toUpperCase().slice(0,2);
-  const logoImg    = form.logoUrl ? <img src={`/${form.logoUrl}`} alt="" style={{display:'block',maxHeight:32,maxWidth:112,objectFit:'contain'}} /> : null;
-
-  const tableItems = form.items.filter((i:any)=>i.description);
-
-  function TableRows() {
-    return <>
-      {tableItems.map((item:any,idx:number)=>{
-        const stripe = form.tableStyle==='striped' && idx%2===0;
-        return (
-          <tr key={idx} style={stripe?{background:`${pc}08`}:{}}>
-            <td className="py-1.5 text-gray-700 leading-snug">{item.description}</td>
-            <td className="py-1.5 text-center text-gray-500">{item.qty}{item.unit?` ${item.unit}`:''}</td>
-            <td className="py-1.5 text-right text-gray-500">{fmtC(item.unitPrice)}</td>
-            <td className="py-1.5 text-right font-semibold" style={{color:pc}}>{fmtC((item.qty||0)*(item.unitPrice||0))}</td>
-          </tr>
-        );
-      })}
-    </>;
-  }
-
-  function Totals() {
-    return (
-      <div className="mt-3 pt-2 space-y-1">
-        <div className="flex justify-between text-gray-500 text-[9px]"><span>Subtotal</span><span>{fmtC(subtotal)}</span></div>
-        {discAmt>0 && <div className="flex justify-between text-[9px]"><span className="text-gray-500">Discount</span><span className="text-red-500">- {fmtC(discAmt)}</span></div>}
-        {taxAmt>0  && <div className="flex justify-between text-[9px]"><span className="text-gray-500">{form.taxLabel||'Tax'} {form.taxRate>0?`${form.taxRate}%`:''}</span><span className="text-gray-600">{fmtC(taxAmt)}</span></div>}
-        <div className="flex justify-between font-black border-t pt-1.5 mt-1" style={{borderColor:pc}}>
-          <span className="text-gray-900 text-[11px]">TOTAL</span>
-          <span className="text-[13px]" style={{color:pc}}>{fmtC(total)}</span>
-        </div>
-      </div>
-    );
-  }
-
-  function BillToSection() {
-    return <>
-      <p className="text-[8px] font-bold uppercase mb-0.5" style={{color:pc}}>Bill To</p>
-      <p className="font-bold text-gray-800">{form.billingName||'—'}</p>
-      {form.billingEmail   && <p className="text-gray-400 text-[9px]">{form.billingEmail}</p>}
-      {form.billingAddress && <p className="text-gray-400 text-[8px] leading-relaxed">{form.billingAddress}</p>}
-      {form.billingHsnSac  && <p className="text-gray-400 text-[8px]">HSN/SAC: {form.billingHsnSac}</p>}
-    </>;
-  }
-
-  function DatesMeta() {
-    return (
-      <div className="space-y-1">
-        <div>
-          <p className="text-[8px] font-bold uppercase text-gray-400">Issue Date</p>
-          <p className="font-semibold text-gray-700 text-[9px]">{dt}</p>
-        </div>
-        {exDate && <div>
-          <p className="text-[8px] font-bold uppercase text-gray-400">{dateLabel}</p>
-          <p className="font-semibold text-orange-500 text-[9px]">{exDate}</p>
-        </div>}
-      </div>
-    );
-  }
-
-  // ─── Classic preview
-  if (tmpl === 'classic') return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-md overflow-hidden text-[10px]" style={{transform:'scale(0.82)',transformOrigin:'top center',marginBottom:'-18%'}}>
-      {form.showHeader && (
-        <div style={{borderBottom:`3px solid ${pc}`,padding:'16px 20px 12px'}}>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              {logoImg ? <div style={{marginBottom:6}}>{logoImg}</div> : <div style={{width:36,height:36,background:pc,borderRadius:logoRadius,display:'flex',alignItems:'center',justifyContent:'center',color:onPc,fontWeight:900,fontSize:14,marginBottom:6}}>
-                {logoChar}
-              </div>}
-              <p className="font-bold text-gray-800">{senderName}</p>
-              {form.fromAddress && <p className="text-gray-400 text-[9px]">{form.fromAddress}</p>}
-              {form.fromEmail   && <p className="text-gray-400 text-[9px]">{form.fromEmail}</p>}
-              {form.fromTaxNo   && <p className="text-gray-400 text-[9px]">Tax: {form.fromTaxNo}</p>}
-            </div>
-            <div className="text-right">
-              <p className="font-black text-[15px] tracking-widest" style={{color:pc}}>{DOC_LBL[form.docType]||'INVOICE'}</p>
-              <DatesMeta/>
-            </div>
-          </div>
-        </div>
-      )}
-      <div style={{background:'#f9f9fc',padding:'8px 20px',borderBottom:'1px solid #eee'}}>
-        <div className="grid grid-cols-2 gap-4">
-          <BillToSection/>
-          {form.subject && <div><p className="text-[9px] font-bold text-gray-700">{form.subject}</p></div>}
-        </div>
-      </div>
-      <div style={{padding:'10px 20px'}}>
-        <table className="w-full">
-          <thead><tr style={{background:pc}}>
-            {['Description','Qty','Rate','Amount'].map(h=>(
-              <th key={h} className="pb-1.5 pt-1.5 px-1 text-[8px] font-bold uppercase" style={{color:onPc,textAlign:h==='Description'?'left':'right'}}>{h}</th>
-            ))}
-          </tr></thead>
-          <tbody><TableRows/></tbody>
-        </table>
-        <Totals/>
-      </div>
-      {form.showWatermark && form.watermark && <WatermarkOverlay form={form}/>}
-      {form.showFooter && (
-        <div style={{background:pc,padding:'8px 20px',textAlign:'center'}}>
-          <p style={{color:onPc,fontSize:8,opacity:0.7}}>{form.footerText||`Thank you for your business · ${senderName}`}</p>
-        </div>
-      )}
-    </div>
-  );
-
-  // ─── Modern preview
-  if (tmpl === 'modern') return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-md overflow-hidden text-[10px]" style={{transform:'scale(0.82)',transformOrigin:'top center',marginBottom:'-18%'}}>
-      {form.showHeader && (
-        <div style={{background:`linear-gradient(135deg,${pc} 0%,${pc}99 100%)`,padding:'16px 20px'}}>
-          <div className="flex items-start justify-between">
-            <div>
-              {logoImg ? <div style={{display:'inline-block',background:'#fff',borderRadius:6,padding:'3px 6px',marginBottom:6}}>{logoImg}</div> : <div style={{width:36,height:36,background:'rgba(255,255,255,0.2)',borderRadius:logoRadius,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:900,fontSize:14,border:'1.5px solid rgba(255,255,255,0.3)',marginBottom:6}}>
-                {logoChar}
-              </div>}
-              <p className="font-bold text-white">{senderName}</p>
-              {form.fromAddress && <p style={{color:'rgba(255,255,255,0.7)',fontSize:9}}>{form.fromAddress}</p>}
-            </div>
-            <div className="text-right">
-              <p style={{fontSize:22,fontWeight:900,color:'rgba(255,255,255,0.2)',letterSpacing:3}}>{DOC_LBL[form.docType]||'INVOICE'}</p>
-              <div style={{color:'#fff',fontSize:9,marginTop:4}}>{dt}</div>
-              <div style={{fontSize:18,fontWeight:900,color:'#fff',marginTop:4}}>{fmtC(total)}</div>
-            </div>
-          </div>
-        </div>
-      )}
-      <div style={{background:'#f9f9fc',padding:'8px 20px',borderBottom:'1px solid #eee'}}>
-        <div className="grid grid-cols-2 gap-4">
-          <BillToSection/>
-          <DatesMeta/>
-        </div>
-      </div>
-      <div style={{padding:'10px 20px'}}>
-        <table className="w-full">
-          <thead><tr style={{background:pc}}>
-            {['Description','Qty','Rate','Amount'].map(h=>(
-              <th key={h} className="pb-1.5 pt-1.5 px-1 text-[8px] font-bold uppercase" style={{color:onPc,textAlign:h==='Description'?'left':'right'}}>{h}</th>
-            ))}
-          </tr></thead>
-          <tbody><TableRows/></tbody>
-        </table>
-        <Totals/>
-      </div>
-      {form.showFooter && (
-        <div style={{background:pc,padding:'6px 20px',textAlign:'center'}}>
-          <p style={{color:onPc,fontSize:8,opacity:0.7}}>{form.footerText||`Thank you for your business · ${senderName}`}</p>
-        </div>
-      )}
-    </div>
-  );
-
-  // ─── Minimal preview
-  if (tmpl === 'minimal') return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-md overflow-hidden text-[10px]" style={{transform:'scale(0.82)',transformOrigin:'top center',marginBottom:'-18%'}}>
-      <div style={{padding:'20px 24px 12px'}}>
-        {form.showHeader && (
-          <>
-            <div className="flex items-start justify-between mb-2">
-              <div>
-                {logoImg && <div style={{marginBottom:6}}>{logoImg}</div>}
-                <p style={{fontSize:14,fontWeight:900,color:'#111'}}>{senderName}</p>
-                {form.fromAddress && <p style={{color:'#888',fontSize:9}}>{form.fromAddress}</p>}
-              </div>
-              <div className="text-right">
-                <p style={{fontSize:9,fontWeight:700,letterSpacing:2,textTransform:'uppercase',color:pc}}>{DOC_LBL[form.docType]||'INVOICE'}</p>
-                <p style={{fontSize:13,fontWeight:900,color:'#111'}}>{dt}</p>
-              </div>
-            </div>
-            <div style={{height:2,background:pc,marginBottom:10}}/>
-          </>
-        )}
-        <div className="grid grid-cols-2 gap-4 mb-3">
-          <BillToSection/>
-          {exDate && <div><p className="text-[8px] text-gray-400 font-bold uppercase">{dateLabel}</p><p className="text-orange-500 font-bold text-[9px]">{exDate}</p></div>}
-        </div>
-        <table className="w-full">
-          <thead><tr style={{borderBottom:'2px solid #111'}}>
-            {['Description','Qty','Rate','Amount'].map(h=>(
-              <th key={h} className="pb-1 text-[8px] font-bold uppercase text-gray-500" style={{textAlign:h==='Description'?'left':'right'}}>{h}</th>
-            ))}
-          </tr></thead>
-          <tbody><TableRows/></tbody>
-        </table>
-        <Totals/>
-      </div>
-      {form.showFooter && (
-        <div style={{borderTop:`1px solid ${pc}30`,padding:'6px 24px',textAlign:'center'}}>
-          <p style={{color:pc,fontSize:8,opacity:0.7}}>{form.footerText||`Thank you for your business`}</p>
-        </div>
-      )}
-    </div>
-  );
-
-  // ─── Corporate preview
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-md overflow-hidden text-[10px]" style={{transform:'scale(0.82)',transformOrigin:'top center',marginBottom:'-18%'}}>
-      {form.showHeader && (
-        <div style={{background:pc,padding:'12px 20px'}}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {logoImg ? <div style={{background:'#fff',borderRadius:6,padding:'3px 6px'}}>{logoImg}</div> : <div style={{width:32,height:32,background:'rgba(255,255,255,0.18)',borderRadius:logoRadius,display:'flex',alignItems:'center',justifyContent:'center',color:onPc,fontWeight:900,fontSize:13,border:'1.5px solid rgba(255,255,255,0.3)'}}>
-                {logoChar}
-              </div>}
-              <div>
-                <p style={{fontWeight:800,color:onPc,fontSize:11}}>{senderName}</p>
-                {form.fromAddress && <p style={{color:isDark(pc)?'rgba(255,255,255,0.65)':'rgba(0,0,0,0.5)',fontSize:8}}>{form.fromAddress}</p>}
-              </div>
-            </div>
-            <div className="text-right">
-              <p style={{fontSize:14,fontWeight:900,color:onPc,letterSpacing:2}}>{DOC_LBL[form.docType]||'INVOICE'}</p>
-              <p style={{color:isDark(pc)?'rgba(255,255,255,0.7)':'rgba(0,0,0,0.6)',fontSize:9}}>{dt}</p>
-            </div>
-          </div>
-        </div>
-      )}
-      <div style={{background:'#f4f6fa',padding:'8px 20px',borderBottom:'1px solid #e8eaed'}}>
-        <div className="grid grid-cols-2 gap-4">
-          <BillToSection/>
-          <div className="text-right">
-            <p className="text-[8px] font-bold text-gray-400 uppercase">Total Amount</p>
-            <p className="font-black text-[16px]" style={{color:pc}}>{fmtC(total)}</p>
-          </div>
-        </div>
-      </div>
-      <div style={{padding:'10px 20px'}}>
-        <table className="w-full">
-          <thead><tr style={{borderTop:`2px solid ${pc}`,borderBottom:`2px solid ${pc}`,background:`${pc}10`}}>
-            {['Description','Qty','Rate','Amount'].map(h=>(
-              <th key={h} className="pb-1.5 pt-1.5 px-1 text-[8px] font-bold uppercase" style={{color:pc,textAlign:h==='Description'?'left':'right'}}>{h}</th>
-            ))}
-          </tr></thead>
-          <tbody><TableRows/></tbody>
-        </table>
-        <Totals/>
-      </div>
-      {form.showFooter && (
-        <div style={{background:pc,padding:'6px 20px',textAlign:'center'}}>
-          <p style={{color:onPc,fontSize:8,opacity:0.7}}>{form.footerText||`Thank you for your business · ${senderName}`}</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function WatermarkOverlay({ form }: { form: any }) {
-  const op = (form.watermarkOpacity || 12) / 100;
-  return (
-    <div style={{
-      position:'absolute',top:'50%',left:'50%',
-      transform:'translate(-50%,-50%) rotate(-35deg)',
-      fontSize:60,fontWeight:900,color:`rgba(0,0,0,${op})`,
-      letterSpacing:4,textTransform:'uppercase',
-      pointerEvents:'none',whiteSpace:'nowrap',zIndex:0,userSelect:'none',
-    }}>
-      {form.watermark}
     </div>
   );
 }

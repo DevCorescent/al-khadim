@@ -59,6 +59,7 @@ const ROUTE_MODULES: [prefix: string, module: string][] = [
   ['/admin/emails',            'emails'],
   ['/admin/reports',           'reports'],
   ['/admin/site-editor',       'site_editor'],
+  ['/admin/pages',             'pages'],
   ['/admin/users',             'users'],
   ['/admin/settings',          'settings'],
 ];

@@ -4,6 +4,7 @@ import { requirePermission } from '../permissions';
 import { body, handler, json } from '../http';
 import { parseUpload } from '../upload';
 import { deleteUpload } from '../storage';
+import { buildInitialHomepage, normalizeFooter, normalizeHomepage, normalizeNavbar } from '@/lib/homepage/config';
 
 /* Default config seeded on first call */
 const DEFAULTS: Record<string, any> = {
@@ -122,7 +123,34 @@ const DEFAULTS: Record<string, any> = {
       },
     ],
   },
+  // Built from the legacy hero/sections rows on first read — see seedValue().
+  homepage: null,
 };
+
+/** Hard cap on one stored document, so a runaway paste can't bloat every page load. */
+const MAX_CONFIG_BYTES = 1_000_000;
+
+/**
+ * Documents with a normalised shape: stored values are merged over the current
+ * defaults on the way out, so fields added in a later release are always present.
+ */
+function present(key: string, value: any, rows: { key: string; value: any }[]) {
+  if (key === 'homepage') return normalizeHomepage(value, legacyOf(rows));
+  if (key === 'navbar') return normalizeNavbar(value);
+  if (key === 'footer') return normalizeFooter(value);
+  return value;
+}
+
+function legacyOf(rows: { key: string; value: any }[]) {
+  return {
+    hero: rows.find(r => r.key === 'hero')?.value,
+    sections: rows.find(r => r.key === 'sections')?.value,
+  };
+}
+
+function seedValue(key: string, rows: { key: string; value: any }[]) {
+  return key === 'homepage' ? buildInitialHomepage(legacyOf(rows)) : DEFAULTS[key];
+}
 
 /**
  * The public site sections this module manages. Other rows in the same table
@@ -136,28 +164,33 @@ function isKnownKey(key: string) {
 }
 
 async function getConfig(key: string) {
-  const row = await prisma.siteConfig.findUnique({ where: { key } });
-  if (row) return row.value;
+  const rows = await prisma.siteConfig.findMany({ where: { key: { in: [key, 'hero', 'sections'] } } });
+  const row = rows.find(r => r.key === key);
+  if (row) return present(key, row.value, rows);
   // seed default (skipDuplicates: a concurrent first read may have seeded it already)
-  await prisma.siteConfig.createMany({ data: [{ key, value: DEFAULTS[key] }], skipDuplicates: true });
-  return DEFAULTS[key];
+  const value = seedValue(key, rows);
+  await prisma.siteConfig.createMany({ data: [{ key, value }], skipDuplicates: true });
+  return present(key, value, rows);
 }
 
 /* ── Public: get all config ── */
 export const getAll = handler(async () => {
   try {
-    const rows = await prisma.siteConfig.findMany();
-    const result: Record<string, any> = {};
     const keys = Object.keys(DEFAULTS);
+    // Only public keys: the same table holds private settings (smtp, ai).
+    const rows = await prisma.siteConfig.findMany({ where: { key: { in: keys } } });
+    const result: Record<string, any> = {};
+    const seeds: { key: string; value: any }[] = [];
     // ensure all keys exist
     for (const key of keys) {
       const row = rows.find((r) => r.key === key);
-      result[key] = row ? row.value : DEFAULTS[key];
+      const value = row ? row.value : seedValue(key, rows);
+      if (!row) seeds.push({ key, value });
+      result[key] = present(key, value, rows);
     }
     // seed missing
-    const missing = keys.filter((k) => !rows.find((r) => r.key === k));
-    if (missing.length) {
-      await prisma.siteConfig.createMany({ data: missing.map((k) => ({ key: k, value: DEFAULTS[k] })), skipDuplicates: true });
+    if (seeds.length) {
+      await prisma.siteConfig.createMany({ data: seeds, skipDuplicates: true });
     }
     return json(result);
   } catch (err: any) {
@@ -180,9 +213,16 @@ export const getSection = handler<{ key: string }>(async (_req, { params }) => {
 export const updateSection = handler<{ key: string }>(async (req, { params }) => {
   const user = await requirePermission(req, 'site_editor', 'edit');
   if (!isKnownKey(params.key)) return json({ error: 'Unknown config section' }, 404);
-  const value = await body(req);
+  let value = await body(req);
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return json({ error: 'Config value must be a JSON object' }, 400);
+  }
+  if (JSON.stringify(value).length > MAX_CONFIG_BYTES) {
+    return json({ error: 'This configuration is too large to save' }, 413);
+  }
+  if (params.key === 'homepage') {
+    if (!Array.isArray(value.sections)) return json({ error: 'Homepage sections must be a list' }, 400);
+    value = normalizeHomepage(value);
   }
   try {
     const val = await prisma.siteConfig.upsert({
@@ -190,7 +230,7 @@ export const updateSection = handler<{ key: string }>(async (req, { params }) =>
       create: { key: params.key, value, updatedBy: user?.id },
       update: { value, updatedBy: user?.id },
     });
-    return json(val.value);
+    return json(present(params.key, val.value, []));
   } catch (err: any) {
     return json({ error: err.message }, 400);
   }

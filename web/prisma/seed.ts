@@ -26,6 +26,10 @@ import bcrypt from 'bcryptjs';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient, UserRole } from '../src/generated/prisma/client';
 import { EMAIL_TEMPLATES } from './seed-data/emailTemplates';
+import { EMAIL_DESIGNS } from './seed-data/emailDesigns';
+import { renderEmail } from '../src/lib/email/render';
+import { DEFAULT_EMAIL_THEME } from '../src/lib/email/theme';
+import { INVOICE_TEMPLATES } from './seed-data/invoiceTemplates';
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
@@ -110,11 +114,30 @@ async function seedTaxonomy() {
   console.log(`  ${CATEGORIES.length} categories`);
 }
 
+/** A seeded template plus its branded builder design (and the HTML rendered from it). */
+function brandedTemplate(t: (typeof EMAIL_TEMPLATES)[number]) {
+  const design = EMAIL_DESIGNS[t.slug];
+  if (!design) return t;
+  const html = renderEmail(design, DEFAULT_EMAIL_THEME, { assetBase: process.env.WEB_URL || 'http://localhost:3000', subject: t.subject });
+  const tags = Array.isArray(t.mergeTags) ? [...(t.mergeTags as any[])] : [];
+  if (html.includes('{{appUrl}}') && !tags.some(m => m.key === 'appUrl')) tags.push({ key: 'appUrl', label: 'Website address (automatic)', sample: 'https://alkhadim.ae' });
+  return { ...t, html, design: design as any, mergeTags: tags };
+}
+
 async function seedEmailTemplates() {
-  for (const t of EMAIL_TEMPLATES) {
-    await prisma.emailTemplate.upsert({ where: { slug: t.slug }, update: {}, create: t });
+  let upgraded = 0;
+  for (const raw of EMAIL_TEMPLATES) {
+    const t = brandedTemplate(raw);
+    const existing = await prisma.emailTemplate.findUnique({ where: { slug: t.slug } });
+    if (!existing) {
+      await prisma.emailTemplate.create({ data: t });
+    } else if (existing.version === 1 && !existing.updatedBy && !existing.design && t.design) {
+      // An original, never-edited template: move it onto the branded design.
+      await prisma.emailTemplate.update({ where: { slug: t.slug }, data: { html: t.html, design: t.design, mergeTags: t.mergeTags as any } });
+      upgraded++;
+    }
   }
-  console.log(`  ${EMAIL_TEMPLATES.length} email templates`);
+  console.log(`  ${EMAIL_TEMPLATES.length} email templates${upgraded ? ` (${upgraded} upgraded to the branded design)` : ''}`);
 }
 
 async function seedDemoData() {
@@ -232,12 +255,27 @@ async function seedDemoAccounts() {
   console.log(`  ${DEMO_STAFF.length} staff logins, 1 candidate login, 1 company login (see docs/PANEL_TESTING_GUIDE.md)`);
 }
 
+async function seedInvoiceTemplates() {
+  // Created once by name and never overwritten; becomes the default only if none is set.
+  const hasDefault = await prisma.invoiceTemplate.count({ where: { isDefault: true } });
+  for (const t of INVOICE_TEMPLATES) {
+    await prisma.invoiceTemplate.upsert({
+      where: { name: t.name }, update: {},
+      create: { ...t, isDefault: t.isDefault && !hasDefault, data: t.data as any },
+    });
+  }
+  console.log(`  ${INVOICE_TEMPLATES.length} invoice template(s)`);
+}
+
 async function main() {
   console.log('Admin account:');
   await seedStaff();
 
   console.log('Email templates (required — the app sends these from code):');
   await seedEmailTemplates();
+
+  console.log('Invoice templates:');
+  await seedInvoiceTemplates();
 
   // Off by default: the industry and category lists are business configuration, set up
   // from Settings once the customer's own list is known.

@@ -63,3 +63,97 @@
     @apply inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-primary-50 text-primary-600 border border-primary-100;
   }
 }
+
+/* ─── Public website theme ─────────────────────────────────────────────────
+   Defaults for the hp-* tokens (UAE Heritage). The live values are written
+   over these from the Website Builder: server-rendered on the homepage and
+   applied on the client everywhere else (lib/siteConfig.ts). */
+:root {
+  --hp-primary: 15 84 104;
+  --hp-primary-dark: 10 61 76;
+  --hp-accent: 42 140 158;
+  --hp-gold: 198 161 91;
+  --hp-ink: 6 30 38;
+  --hp-sand: 245 242 235;
+  --hp-surface: 255 255 255;
+  --hp-text: 11 31 38;
+  --hp-muted: 90 107 112;
+  --hp-font-heading: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+  --hp-font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --hp-font-arabic: 'Tajawal', sans-serif;
+  --hp-radius-btn: 10px;
+  --hp-radius-card: 16px;
+}
+
+.hp-root { font-family: var(--hp-font-body); color: rgb(var(--hp-text)); }
+.hp-root h1, .hp-root h2, .hp-root h3, .hp-heading {
+  font-family: var(--hp-font-heading);
+  letter-spacing: -0.025em;
+}
+.hp-root h3 { font-family: var(--hp-font-body); letter-spacing: -0.01em; }
+.hp-arabic { font-family: var(--hp-font-arabic); letter-spacing: 0; }
+
+/* Highlighted words in headings (*word* in the builder). */
+.hp-mark { color: rgb(var(--hp-gold)); font-style: normal; }
+.hp-on-light .hp-mark { color: rgb(var(--hp-primary)); }
+
+/* The UAE flag as a thin accent: red hoist, then green / white / black. */
+.hp-flag-stripe {
+  background: linear-gradient(90deg,
+    rgb(200 16 46) 0 25%, rgb(0 115 47) 25% 50%, #ffffff 50% 75%, #000000 75% 100%);
+}
+
+/* Eight-point star lattice, drawn in currentColor at low opacity. */
+.hp-pattern {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23ffffff' stroke-width='1'%3E%3Cpath d='M32 6l7.5 18.5L58 32l-18.5 7.5L32 58l-7.5-18.5L6 32l18.5-7.5z'/%3E%3Crect x='17' y='17' width='30' height='30' transform='rotate(45 32 32)'/%3E%3Ccircle cx='32' cy='32' r='6'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 64px 64px;
+}
+.hp-pattern-dark {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23000000' stroke-width='1'%3E%3Cpath d='M32 6l7.5 18.5L58 32l-18.5 7.5L32 58l-7.5-18.5L6 32l18.5-7.5z'/%3E%3Crect x='17' y='17' width='30' height='30' transform='rotate(45 32 32)'/%3E%3Ccircle cx='32' cy='32' r='6'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 64px 64px;
+}
+
+/* Scroll reveal: only active when JS has marked the page as animated. */
+.hp-animate .hp-reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s cubic-bezier(.22,1,.36,1), transform .7s cubic-bezier(.22,1,.36,1); }
+.hp-animate .hp-reveal.is-visible { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .hp-animate .hp-reveal { opacity: 1; transform: none; transition: none; }
+}
+
+@keyframes hpMarquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes hpFadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+/* Builder preview: outline the hovered section and label it. */
+.hp-preview [data-hp-section] { position: relative; }
+.hp-preview [data-hp-section]:hover { outline: 2px dashed rgb(var(--hp-gold)); outline-offset: -2px; cursor: pointer; }
+.hp-preview [data-hp-section].hp-selected { outline: 2px solid rgb(var(--hp-gold)); outline-offset: -2px; }
+@media (prefers-reduced-motion: reduce) {
+  .hp-root *, .hp-root *::before, .hp-root *::after { animation: none !important; transition: none !important; }
+}
+
+/* Showcase hero: highlighted words in a deepened gold that holds up on sand. */
+.hp-root .hp-gold-marks .hp-mark { color: color-mix(in srgb, rgb(var(--hp-gold)) 80%, #000); font-style: normal; }
+
+/* ─── Hero slider ─────────────────────────────────────────────────────────── */
+@keyframes hpKenburnsA { from { transform: scale(1.14) translate3d(0, 0, 0); } to { transform: scale(1) translate3d(0, 0, 0); } }
+@keyframes hpKenburnsB { from { transform: scale(1.14) translate3d(0, 0, 0); } to { transform: scale(1) translate3d(0, 0, 0); } }
+@keyframes hpProgress { from { width: 0; } to { width: 100%; } }
+@keyframes hpTimer { from { opacity: 0; } to { opacity: 0; } }
+@keyframes hpTxUp { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: none; } }
+@keyframes hpTxFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes hpTxBlur { from { opacity: 0; filter: blur(14px); transform: translateY(8px); } to { opacity: 1; filter: blur(0); transform: none; } }
+@keyframes hpTxSlide { from { opacity: 0; transform: translateX(-48px); } to { opacity: 1; transform: none; } }
+
+.hp-tx .hp-tx-items > * { animation-duration: .95s; animation-timing-function: cubic-bezier(.22, 1, .36, 1); animation-fill-mode: both; }
+.hp-tx .hp-tx-items > :nth-child(1) { animation-delay: .18s; }
+.hp-tx .hp-tx-items > :nth-child(2) { animation-delay: .3s; }
+.hp-tx .hp-tx-items > :nth-child(3) { animation-delay: .44s; }
+.hp-tx .hp-tx-items > :nth-child(4) { animation-delay: .58s; }
+.hp-tx-fadeUp .hp-tx-items > * { animation-name: hpTxUp; }
+.hp-tx-fade   .hp-tx-items > * { animation-name: hpTxFade; animation-duration: 1.1s; }
+.hp-tx-blur   .hp-tx-items > * { animation-name: hpTxBlur; animation-duration: 1.1s; }
+.hp-tx-slide  .hp-tx-items > * { animation-name: hpTxSlide; }
+.hp-tx-none   .hp-tx-items > * { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .hp-root .hp-progress-bar { width: 100% !important; }
+}

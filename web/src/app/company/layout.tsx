@@ -93,9 +93,7 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <header className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 h-14 flex items-center px-4 lg:px-6 gap-3">
         <Link href="/" className="flex items-center gap-2 shrink-0">
-          <div className="w-7 h-7 bg-primary-400 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-xs">A</span>
-          </div>
+          <img src="/brand/logo-96.png" alt="Al Khadim" className="w-7 h-7 rounded-full shrink-0 shadow-sm" />
           <span className="font-bold text-gray-900 text-sm hidden sm:block">Al Khadim</span>
         </Link>
         <ChevronRight size={14} className="text-gray-400 hidden sm:block" />

@@ -27,6 +27,8 @@
  */
 import nodemailer, { type Transporter } from 'nodemailer';
 import { prisma } from '@/lib/prisma';
+import { htmlToText, isFullHtmlDocument, wrapEmailHtml } from '@/lib/email/render';
+import { emailAssetBase, getEmailTheme } from './emailTheme';
 
 export const ENV_DOMAIN = process.env.MAIL_DOMAIN || 'alkhadim.ae';
 
@@ -276,6 +278,15 @@ export async function sendMail(opts: SendMailOptions = {} as SendMailOptions): P
   if (!to) throw new Error('sendMail: "to" is required');
   if (!subject) throw new Error('sendMail: "subject" is required');
 
+  // Every HTML email goes out as a complete document in the brand theme (a bare
+  // fragment gets the branded frame) with a plain-text alternative — both help
+  // deliverability and keep every module's mail consistent.
+  let finalHtml = html;
+  if (html && !isFullHtmlDocument(html)) {
+    finalHtml = wrapEmailHtml(html, await getEmailTheme(), { assetBase: emailAssetBase(), subject });
+  }
+  const finalText = text || (finalHtml ? htmlToText(finalHtml) : subject);
+
   const { transport, domain, authUser, restrictFromToAuthUser } = await getTransport();
   const identity = identityFor(module, domain);
   // When the provider only allows sending as the authenticated account, send
@@ -289,15 +300,20 @@ export async function sendMail(opts: SendMailOptions = {} as SendMailOptions): P
     info = await transport.sendMail({
       from: `"${identity.name}" <${fromAddress}>`,
       to, cc, bcc, subject,
-      html,
-      text: text || (html ? undefined : subject),
+      html: finalHtml,
+      text: finalText,
       replyTo: replyTo || identity.address,
       attachments,
+      // Bulk mail must offer one-click unsubscribe (Gmail / Yahoo sender rules).
+      ...(campaignId ? {
+        list: { unsubscribe: { url: `mailto:${replyTo || identity.address}?subject=unsubscribe`, comment: 'Unsubscribe' } },
+        headers: { 'X-Campaign-Id': campaignId },
+      } : {}),
     });
   } catch (err: any) {
     if (!scheduledEmailId) {
       await logDirectSend({
-        module, to, cc, bcc, subject, html, text, status: 'FAILED',
+        module, to, cc, bcc, subject, html: finalHtml, text: finalText, status: 'FAILED',
         error: String(err?.message || err).slice(0, 500),
         campaignId, recipientId, recipientName, createdBy,
       });
@@ -307,7 +323,7 @@ export async function sendMail(opts: SendMailOptions = {} as SendMailOptions): P
 
   if (!scheduledEmailId) {
     await logDirectSend({
-      module, to, cc, bcc, subject, html, text, status: 'SENT',
+      module, to, cc, bcc, subject, html: finalHtml, text: finalText, status: 'SENT',
       campaignId, recipientId, recipientName, createdBy,
     });
   }
