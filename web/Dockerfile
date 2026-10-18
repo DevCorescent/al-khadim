@@ -4,6 +4,7 @@ COPY package*.json ./
 RUN npm ci
 COPY . .
 ENV DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder
+ENV NEXT_STANDALONE=1
 RUN npm run build
 
 FROM node:20-alpine AS runner

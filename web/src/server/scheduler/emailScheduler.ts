@@ -73,7 +73,9 @@ export async function processDue(): Promise<number> {
 export function startEmailScheduler(): void {
   if (globalForScheduler.__emailSchedulerTimer) return;
   const timer = setInterval(() => {
-    processDue().catch((e) => console.error('[emailScheduler]', e.message));
+    processDue().catch((e) =>
+      console.error('[emailScheduler]', e.code || e.name || 'Error', e.message)
+    );
   }, POLL_MS);
   if (timer.unref) timer.unref();
   globalForScheduler.__emailSchedulerTimer = timer;

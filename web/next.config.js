@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
+  // Standalone output is only for the Docker image (web/Dockerfile runs node server.js).
+  // The pm2 deployment runs `next start`, which Next refuses to pair with standalone.
+  output: process.env.NEXT_STANDALONE === '1' ? 'standalone' : undefined,
   // Lets a second server (e.g. the API test server) run beside `npm run dev` without sharing .next
   distDir: process.env.NEXT_DIST_DIR || '.next',
   images: {
