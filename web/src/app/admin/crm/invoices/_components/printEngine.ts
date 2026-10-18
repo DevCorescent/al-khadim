@@ -464,7 +464,7 @@ function assetSrc(path?: string | null): string {
   return `${origin}/${String(path).replace(/^\/+/, '').replace(/"/g, '')}`;
 }
 
-function docTitle(inv: PrintInvoice, d: InvoiceDesignOptions): string {
+export function docTitle(inv: PrintInvoice, d: InvoiceDesignOptions): string {
   if (d.docTitle) return d.docTitle;
   if (inv.docType === 'QUOTATION') return 'QUOTATION';
   if (inv.docType === 'PROFORMA_INVOICE') return 'PROFORMA INVOICE';

@@ -12,6 +12,7 @@ import {
 import { buildPrintHTML } from '../_components/printEngine';
 import MarkPaidModal from '../_components/MarkPaidModal';
 import PrintPreview from '../_components/PrintPreview';
+import DownloadMenu from '../_components/DownloadMenu';
 
 /** API invoice → print-engine input. */
 function printable(doc: any) {
@@ -134,6 +135,7 @@ export default function InvoiceViewPage() {
             className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200 bg-white px-3 py-1.5 rounded-xl hover:bg-gray-50 transition-colors">
             <Printer size={12}/> Print
           </button>
+          <DownloadMenu getInvoice={() => (doc ? printable(doc) : null)} />
           <button onClick={() => duplicate.mutate()}
             className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 border border-gray-200 bg-white px-3 py-1.5 rounded-xl hover:bg-gray-50 transition-colors">
             <Copy size={12}/> Duplicate
